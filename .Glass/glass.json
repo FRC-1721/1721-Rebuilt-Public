@@ -1,0 +1,38 @@
+{
+  "NetworkTables": {
+    "retained": {
+      "SmartDashboard": {
+        "AutoChooser": {
+          "open": true
+        },
+        "open": true
+      }
+    },
+    "transitory": {
+      "AdvantageKit": {
+        "open": true
+      },
+      "photonvision": {
+        "open": true
+      }
+    },
+    "types": {
+      "/AdvantageKit/RealOutputs/Alerts": "Alerts",
+      "/AdvantageKit/RealOutputs/PathPlanner": "Alerts",
+      "/AdvantageKit/RealOutputs/PhotonAlerts": "Alerts",
+      "/FMSInfo": "FMSInfo",
+      "/SmartDashboard/Alerts": "Alerts",
+      "/SmartDashboard/AutoChooser": "String Chooser",
+      "/SmartDashboard/Field": "Field2d",
+      "/SmartDashboard/PathPlanner": "Alerts",
+      "/SmartDashboard/PhotonAlerts": "Alerts"
+    }
+  },
+  "NetworkTables Info": {
+    "visible": true
+  },
+  "NetworkTables Settings": {
+    "mode": "Client (NT4)",
+    "serverTeam": "1721"
+  }
+}

@@ -1,0 +1,323 @@
+// Team: FRC 1721 - Concord Robotics (Tidal Force)
+// Year: 2025-2026
+// Code: Public codebase for our REBUILT frc robot
+// License: MIT License (See LICENSE file for full text)
+//
+// Copyright (c) 2025-2026 Concord Robotics
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in all
+// copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN an ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
+
+package org.tidalforce.frc2026;
+
+import static org.tidalforce.frc2026.subsystems.vision.VisionConstants.camera0Name;
+import static org.tidalforce.frc2026.subsystems.vision.VisionConstants.camera1Name;
+import static org.tidalforce.frc2026.subsystems.vision.VisionConstants.robotToCamera0;
+import static org.tidalforce.frc2026.subsystems.vision.VisionConstants.robotToCamera1;
+
+import com.pathplanner.lib.auto.AutoBuilder;
+import edu.wpi.first.math.geometry.Pose2d;
+import edu.wpi.first.math.geometry.Rotation2d;
+import edu.wpi.first.math.util.Units;
+import edu.wpi.first.wpilibj.Alert;
+import edu.wpi.first.wpilibj.Alert.AlertType;
+import edu.wpi.first.wpilibj.DriverStation;
+import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
+import edu.wpi.first.wpilibj2.command.Command;
+import edu.wpi.first.wpilibj2.command.Commands;
+import edu.wpi.first.wpilibj2.command.button.CommandXboxController;
+import java.util.function.DoubleSupplier;
+import java.util.function.Supplier;
+import lombok.experimental.ExtensionMethod;
+import org.littletonrobotics.junction.networktables.LoggedDashboardChooser;
+import org.tidalforce.frc2026.FieldConstants.AprilTagLayoutType;
+import org.tidalforce.frc2026.commands.DriveCommands;
+import org.tidalforce.frc2026.commands.JoystickApproachCommand;
+import org.tidalforce.frc2026.generated.TunerConstants;
+import org.tidalforce.frc2026.subsystems.drive.Drive;
+import org.tidalforce.frc2026.subsystems.drive.GyroIO;
+import org.tidalforce.frc2026.subsystems.drive.GyroIOPigeon2;
+import org.tidalforce.frc2026.subsystems.drive.ModuleIOSim;
+import org.tidalforce.frc2026.subsystems.drive.ModuleIOTalonFX;
+import org.tidalforce.frc2026.subsystems.hopper.Hopper;
+import org.tidalforce.frc2026.subsystems.intake.Intake;
+import org.tidalforce.frc2026.subsystems.kicker.Kicker;
+import org.tidalforce.frc2026.subsystems.leds.Leds;
+import org.tidalforce.frc2026.subsystems.leds.LedsIO;
+import org.tidalforce.frc2026.subsystems.leds.LedsIOHAL;
+import org.tidalforce.frc2026.subsystems.rollers.RollerSystemIO;
+import org.tidalforce.frc2026.subsystems.shooter.flywheel.Flywheel;
+import org.tidalforce.frc2026.subsystems.shooter.flywheel.FlywheelIO;
+import org.tidalforce.frc2026.subsystems.shooter.hood.Hood;
+import org.tidalforce.frc2026.subsystems.shooter.hood.HoodIO;
+import org.tidalforce.frc2026.subsystems.shooter.turret.Turret;
+import org.tidalforce.frc2026.subsystems.shooter.turret.TurretIO;
+import org.tidalforce.frc2026.subsystems.shooter.turret.TurretIOSim;
+import org.tidalforce.frc2026.subsystems.vision.Vision;
+import org.tidalforce.frc2026.subsystems.vision.VisionIOPhotonVision;
+import org.tidalforce.frc2026.subsystems.vision.VisionIOPhotonVisionSim;
+import org.tidalforce.frc2026.util.LoggedTunableNumber;
+import org.tidalforce.frc2026.util.controllers.TriggerUtil;
+import org.tidalforce.frc2026.util.controllers.TurtleBeachRematchAdvController;
+import org.tidalforce.frc2026.util.geometry.AllianceFlipUtil;
+
+@ExtensionMethod({TriggerUtil.class})
+public class RobotContainer {
+  // Subsystems
+  public Drive drive;
+  private Intake intake;
+  private Hopper hopper;
+  private Kicker kicker;
+  private Hood hood;
+  private Flywheel flywheel;
+  private Turret turret;
+  private Vision vision;
+  private Leds leds;
+
+  // Controller
+  private final TurtleBeachRematchAdvController TBC = new TurtleBeachRematchAdvController(0);
+  private final CommandXboxController secondary = new CommandXboxController(1);
+
+  public LoggedTunableNumber speedMultiplier =
+      new LoggedTunableNumber("Drivebase Speed Multiplier", 1.0);
+  private LoggedTunableNumber alignPredictionSeconds =
+      new LoggedTunableNumber("Align Prediction Seconds", 0.3);
+
+  private final Alert TBCDisconnected =
+      new Alert("TBC controller disconnected (port 0).", AlertType.kWarning);
+  private final Alert secondaryDisconnected =
+      new Alert("Secondary controller disconnected (port 1).", AlertType.kWarning);
+
+  // Dashboard inputs
+  private final LoggedDashboardChooser<Command> autoChooser;
+  private final LoggedTunableNumber presetHoodAngleDegrees =
+      new LoggedTunableNumber("PresetHoodAngleDegrees", 30.0);
+  private final LoggedTunableNumber presetFlywheelSpeedRadPerSec =
+      new LoggedTunableNumber("PresetFlywheelSpeedRadPerSec", 100);
+
+  /** The container for the robot. Contains subsystems, OI devices, and commands. */
+  public RobotContainer() {
+    if (Constants.getMode() != Constants.Mode.REPLAY) {
+      switch (Constants.robot) {
+        case COMP:
+          // Not implemented
+          break;
+
+        case DEV:
+          drive =
+              new Drive(
+                  new GyroIOPigeon2() {},
+                  new ModuleIOTalonFX(TunerConstants.FrontLeft),
+                  new ModuleIOTalonFX(TunerConstants.FrontRight),
+                  new ModuleIOTalonFX(TunerConstants.BackLeft),
+                  new ModuleIOTalonFX(TunerConstants.BackRight));
+          vision =
+              new Vision(
+                  drive::addVisionMeasurement,
+                  new VisionIOPhotonVision(camera0Name, robotToCamera0));
+          break;
+
+        case SIM:
+          drive =
+              new Drive(
+                  new GyroIO() {},
+                  new ModuleIOSim(TunerConstants.FrontLeft),
+                  new ModuleIOSim(TunerConstants.FrontRight),
+                  new ModuleIOSim(TunerConstants.BackLeft),
+                  new ModuleIOSim(TunerConstants.BackRight));
+          turret = new Turret(new TurretIOSim() {});
+          leds = new Leds(new LedsIOHAL());
+          vision =
+              new Vision(
+                  drive::addVisionMeasurement,
+                  new VisionIOPhotonVisionSim(camera0Name, robotToCamera0, drive::getPose),
+                  new VisionIOPhotonVisionSim(camera1Name, robotToCamera1, drive::getPose));
+          break;
+      }
+    }
+
+    // No-op implementations for replay
+    if (intake == null) {
+      intake = new Intake(new RollerSystemIO() {});
+    }
+    if (hopper == null) {
+      hopper = new Hopper(new RollerSystemIO() {});
+    }
+    if (hood == null) {
+      hood = new Hood(new HoodIO() {});
+    }
+    if (flywheel == null) {
+      flywheel = new Flywheel(new FlywheelIO() {});
+    }
+    if (turret == null) {
+      turret = new Turret(new TurretIO() {});
+    }
+    if (kicker == null) {
+      kicker = new Kicker(new RollerSystemIO() {}, new RollerSystemIO() {});
+    }
+    if (leds == null) {
+      leds = new Leds(new LedsIO() {});
+    }
+
+    // Set up auto routines
+    autoChooser = new LoggedDashboardChooser<>("Auto Choices", AutoBuilder.buildAutoChooser());
+    autoChooser.addDefaultOption("Do Nothing", Commands.none());
+    autoChooser.addOption(
+        "Drive Wheel Radius Characterization", DriveCommands.wheelRadiusCharacterization(drive));
+
+    SmartDashboard.putData("AutoChooser", autoChooser.getSendableChooser());
+
+    // Configure the button bindings
+    configureButtonBindings();
+
+    // Set default commands
+    hood.setDefaultCommand(hood.runTrackTargetCommand());
+    turret.setDefaultCommand(turret.runTrackTargetCommand());
+    flywheel.setDefaultCommand(flywheel.runTrackTargetCommand());
+    intake.setDefaultCommand(
+        Commands.startEnd(
+            () -> intake.setGoal(Intake.Goal.INTAKE),
+            () -> intake.setGoal(Intake.Goal.STOP),
+            intake));
+  }
+
+  private Command joystickApproach(Supplier<Pose2d> approachPose) {
+    return new JoystickApproachCommand(
+        drive, () -> -TBC.getLeftY() * speedMultiplier.getAsDouble(), approachPose);
+  }
+
+  private Pose2d getFuturePose(double seconds) {
+    return drive.getPose().exp(drive.getChassisSpeeds().toTwist2d(seconds));
+  }
+
+  /** Create the bindings between buttons and commands. */
+  private void configureButtonBindings() {
+    // Drive controls
+    DoubleSupplier driverX = () -> TBC.getLeftY() - secondary.getLeftY();
+    DoubleSupplier driverY = () -> TBC.getLeftX() - secondary.getLeftX();
+    DoubleSupplier driverOmega = () -> -TBC.getRightX() - secondary.getRightX();
+    drive.setDefaultCommand(DriveCommands.joystickDrive(drive, driverX, driverY, driverOmega));
+
+    // ***** TBC CONTROLLER *****
+    TBC.x().onTrue(hood.zeroCommand().alongWith(turret.zeroCommand()));
+    // TBC
+    //     .leftTrigger()
+    //     .negate()
+    //     .whileTrue(
+    //         Commands.startEnd(
+    //             () -> intake.setGoal(Intake.Goal.INTAKE),
+    //             () -> intake.setGoal(Intake.Goal.STOP),
+    //             intake));
+    TBC.rightTrigger()
+        .whileTrue(
+            Commands.parallel(
+                Commands.startEnd(
+                    () -> intake.setGoal(Intake.Goal.OUTTAKE),
+                    () -> intake.setGoal(Intake.Goal.STOP),
+                    intake),
+                Commands.startEnd(
+                    () -> hopper.setGoal(Hopper.Goal.OUTTAKE),
+                    () -> hopper.setGoal(Hopper.Goal.STOP),
+                    hopper),
+                Commands.startEnd(
+                    () -> kicker.setGoal(Kicker.Goal.OUTTAKE),
+                    () -> kicker.setGoal(Kicker.Goal.STOP),
+                    kicker)));
+    TBC.LeftPaddle()
+        .whileTrue(
+            flywheel
+                .runFixedCommand(presetFlywheelSpeedRadPerSec)
+                .alongWith(
+                    hood.runFixedCommand(
+                        () -> Units.degreesToRadians(presetHoodAngleDegrees.get()), () -> 0.0),
+                    turret.runTrackTargetActiveShootingCommand()));
+    TBC.rightBumper()
+        .negate()
+        .whileTrue(turret.runTrackTargetActiveShootingCommand())
+        .and(hood::atGoal)
+        .and(flywheel::atGoal)
+        .and(turret::atGoal)
+        .whileTrue(
+            Commands.parallel(
+                Commands.startEnd(
+                    () -> hopper.setGoal(Hopper.Goal.SHOOT),
+                    () -> hopper.setGoal(Hopper.Goal.STOP),
+                    hopper),
+                Commands.startEnd(
+                    () -> kicker.setGoal(Kicker.Goal.SHOOT),
+                    () -> kicker.setGoal(Kicker.Goal.STOP),
+                    kicker)))
+        .onFalse(
+            Commands.startEnd(
+                    () -> kicker.setGoal(Kicker.Goal.OUTTAKE),
+                    () -> kicker.setGoal(Kicker.Goal.STOP),
+                    kicker)
+                .withTimeout(0.5));
+
+    TBC.leftBumper()
+        .and(TBC.rightBumper())
+        .and(TBC.a().negate())
+        .whileTrue(
+            joystickApproach(
+                () ->
+                    FieldConstants.LeftTrench.getNearestLeftTrench(
+                        getFuturePose(alignPredictionSeconds.get()))));
+
+    TBC.a()
+        .whileTrue(
+            joystickApproach(
+                () ->
+                    FieldConstants.Hub.getNearestHubCenter(
+                        getFuturePose(alignPredictionSeconds.get()))));
+
+    // Reset gyro
+    TBC.y()
+        .onTrue(
+            Commands.runOnce(
+                    () ->
+                        RobotState.getInstance()
+                            .resetPose(
+                                new Pose2d(
+                                    RobotState.getInstance().getEstimatedPose().getTranslation(),
+                                    AllianceFlipUtil.apply(Rotation2d.kZero))))
+                .withName("ResetGyro")
+                .ignoringDisable(true));
+  }
+
+  // ***** SECONDARY CONTROLLER *****
+
+  /** Update dashboard outputs. */
+  public void updateDashboardOutputs() {
+    // Publish match time
+    SmartDashboard.putNumber("Match Time", DriverStation.getMatchTime());
+
+    // Controller disconnected alerts
+    TBCDisconnected.set(!DriverStation.isJoystickConnected(TBC.getHID().getPort()));
+    secondaryDisconnected.set(!DriverStation.isJoystickConnected(secondary.getHID().getPort()));
+  }
+
+  /** Returns the current AprilTag layout type. */
+  public AprilTagLayoutType getSelectedAprilTagLayout() {
+    return FieldConstants.defaultAprilTagType;
+  }
+
+  /** Returns the autonomous command for the Robot class. */
+  public Command getAutonomousCommand() {
+    return autoChooser.get();
+  }
+}
