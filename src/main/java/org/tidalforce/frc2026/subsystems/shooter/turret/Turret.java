@@ -44,7 +44,7 @@ import lombok.Setter;
 import lombok.experimental.Accessors;
 import org.littletonrobotics.junction.AutoLogOutput;
 import org.littletonrobotics.junction.Logger;
-import org.tidalforce.frc2026.AlphaMechanism3d;
+import org.tidalforce.frc2026.DevBotMech3d;
 import org.tidalforce.frc2026.Constants;
 import org.tidalforce.frc2026.Robot;
 import org.tidalforce.frc2026.RobotState;
@@ -170,7 +170,7 @@ public class Turret extends FullSubsystem {
     }
 
     // Visualize turret in 3D
-    AlphaMechanism3d.getMeasured().setTurretAngle(new Rotation2d(getPosition()));
+    DevBotMech3d.getMeasured().setTurretAngle(new Rotation2d(getPosition()));
 
     // Record cycle time
     LoggedTracer.record("Turret");

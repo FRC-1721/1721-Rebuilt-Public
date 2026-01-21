@@ -38,12 +38,12 @@ import org.tidalforce.frc2026.subsystems.shooter.ShooterConstants;
 import org.tidalforce.frc2026.util.geometry.GeomUtil;
 
 @ExtensionMethod({GeomUtil.class})
-public class AlphaMechanism3d {
-  private static AlphaMechanism3d measured;
+public class DevBotMech3d {
+  private static DevBotMech3d measured;
 
-  public static AlphaMechanism3d getMeasured() {
+  public static DevBotMech3d getMeasured() {
     if (measured == null) {
-      measured = new AlphaMechanism3d();
+      measured = new DevBotMech3d();
     }
     return measured;
   }

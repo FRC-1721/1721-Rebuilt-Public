@@ -249,7 +249,7 @@ public class Robot extends LoggedRobot {
     robotContainer.updateDashboardOutputs();
 
     // Log Mechanism3d data
-    AlphaMechanism3d.getMeasured().log("Mechanism3d/Alpha");
+    DevBotMech3d.getMeasured().log("Mechanism3d/Alpha");
 
     // Record cycle time
     LoggedTracer.record("RobotPeriodic");
