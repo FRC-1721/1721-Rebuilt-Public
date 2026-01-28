@@ -29,6 +29,7 @@ import edu.wpi.first.hal.AllianceStationID;
 import edu.wpi.first.math.MathShared;
 import edu.wpi.first.math.MathSharedStore;
 import edu.wpi.first.math.MathUsageId;
+import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.wpilibj.Alert;
 import edu.wpi.first.wpilibj.Alert.AlertType;
 import edu.wpi.first.wpilibj.DriverStation;
@@ -55,7 +56,6 @@ import org.littletonrobotics.junction.wpilog.WPILOGReader;
 import org.littletonrobotics.junction.wpilog.WPILOGWriter;
 import org.tidalforce.frc2026.Constants.Mode;
 import org.tidalforce.frc2026.Constants.RobotType;
-import org.tidalforce.frc2026.subsystems.leds.Leds;
 import org.tidalforce.frc2026.subsystems.shooter.ShotCalculator;
 import org.tidalforce.frc2026.util.FullSubsystem;
 import org.tidalforce.frc2026.util.LoggedTracer;
@@ -190,7 +190,7 @@ public class Robot extends LoggedRobot {
     // Configure Driver Station for sim
     RoboRioSim.setTeamNumber(1721);
     if (Constants.robot == RobotType.SIM) {
-      DriverStationSim.setAllianceStationId(AllianceStationID.Blue1);
+      DriverStationSim.setAllianceStationId(AllianceStationID.Red1);
       DriverStationSim.notifyNewData();
     }
 
@@ -239,11 +239,7 @@ public class Robot extends LoggedRobot {
         && RobotController.getBatteryVoltage() <= lowBatteryVoltage
         && disabledTimer.hasElapsed(lowBatteryDisabledTime)) {
       lowBatteryAlert.set(true);
-      Leds.getGlobal().lowBatteryAlert = true;
     }
-
-    // Clear shooting parameters
-    ShotCalculator.getInstance().clearShootingParameters();
 
     // Update RobotContainer dashboard outputs
     robotContainer.updateDashboardOutputs();
@@ -309,5 +305,11 @@ public class Robot extends LoggedRobot {
 
   /** This function is called periodically whilst in simulation. */
   @Override
-  public void simulationPeriodic() {}
+  public void simulationPeriodic() {
+    Pose2d simPose = robotContainer.drive.getPose();
+    RobotState.getInstance().resetPose(simPose);
+    RobotState.getInstance().setRobotVelocity(robotContainer.drive.getChassisSpeeds());
+
+    ShotCalculator.getInstance().clearShootingParameters();
+  }
 }
