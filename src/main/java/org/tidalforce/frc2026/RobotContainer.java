@@ -33,7 +33,6 @@ import static org.tidalforce.frc2026.subsystems.vision.VisionConstants.robotToCa
 import com.pathplanner.lib.auto.AutoBuilder;
 import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.math.geometry.Rotation2d;
-import edu.wpi.first.math.util.Units;
 import edu.wpi.first.wpilibj.Alert;
 import edu.wpi.first.wpilibj.Alert.AlertType;
 import edu.wpi.first.wpilibj.DriverStation;
@@ -41,7 +40,6 @@ import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.Commands;
 import edu.wpi.first.wpilibj2.command.button.CommandXboxController;
-import java.util.function.DoubleSupplier;
 import java.util.function.Supplier;
 import lombok.experimental.ExtensionMethod;
 import org.littletonrobotics.junction.networktables.LoggedDashboardChooser;
@@ -57,9 +55,8 @@ import org.tidalforce.frc2026.subsystems.drive.ModuleIOTalonFX;
 import org.tidalforce.frc2026.subsystems.hopper.Hopper;
 import org.tidalforce.frc2026.subsystems.intake.Intake;
 import org.tidalforce.frc2026.subsystems.kicker.Kicker;
-import org.tidalforce.frc2026.subsystems.leds.Leds;
-import org.tidalforce.frc2026.subsystems.leds.LedsIO;
-import org.tidalforce.frc2026.subsystems.leds.LedsIOHAL;
+import org.tidalforce.frc2026.subsystems.leds.LEDs;
+import org.tidalforce.frc2026.subsystems.leds.LEDsConstants;
 import org.tidalforce.frc2026.subsystems.rollers.RollerSystemIO;
 import org.tidalforce.frc2026.subsystems.shooter.flywheel.Flywheel;
 import org.tidalforce.frc2026.subsystems.shooter.flywheel.FlywheelIO;
@@ -87,9 +84,9 @@ public class RobotContainer {
   private Flywheel flywheel;
   private Turret turret;
   private Vision vision;
-  private Leds leds;
+  private LEDs leds;
 
-  // Controller
+  // Controllers
   private final TurtleBeachRematchAdvController TBC = new TurtleBeachRematchAdvController(0);
   private final CommandXboxController secondary = new CommandXboxController(1);
 
@@ -103,22 +100,17 @@ public class RobotContainer {
   private final Alert secondaryDisconnected =
       new Alert("Secondary controller disconnected (port 1).", AlertType.kWarning);
 
-  // Dashboard inputs
   private final LoggedDashboardChooser<Command> autoChooser;
   private final LoggedTunableNumber presetHoodAngleDegrees =
       new LoggedTunableNumber("PresetHoodAngleDegrees", 30.0);
   private final LoggedTunableNumber presetFlywheelSpeedRadPerSec =
       new LoggedTunableNumber("PresetFlywheelSpeedRadPerSec", 100);
 
-  /** The container for the robot. Contains subsystems, OI devices, and commands. */
   public RobotContainer() {
     if (Constants.getMode() != Constants.Mode.REPLAY) {
       switch (Constants.robot) {
-        case COMP:
-          // Not implemented
-          break;
-
-        case DEV:
+        case COMP -> {}
+        case DEV -> {
           drive =
               new Drive(
                   new GyroIOPigeon2() {},
@@ -130,9 +122,8 @@ public class RobotContainer {
               new Vision(
                   drive::addVisionMeasurement,
                   new VisionIOPhotonVision(camera0Name, robotToCamera0));
-          break;
-
-        case SIM:
+        }
+        case SIM -> {
           drive =
               new Drive(
                   new GyroIO() {},
@@ -140,41 +131,28 @@ public class RobotContainer {
                   new ModuleIOSim(TunerConstants.FrontRight),
                   new ModuleIOSim(TunerConstants.BackLeft),
                   new ModuleIOSim(TunerConstants.BackRight));
-          turret = new Turret(new TurretIOSim() {});
-          leds = new Leds(new LedsIOHAL());
+          turret = new Turret(new TurretIOSim());
+          leds = LEDsConstants.get();
           vision =
               new Vision(
                   drive::addVisionMeasurement,
                   new VisionIOPhotonVisionSim(camera0Name, robotToCamera0, drive::getPose),
                   new VisionIOPhotonVisionSim(camera1Name, robotToCamera1, drive::getPose));
-          break;
+        }
       }
     }
 
-    // No-op implementations for replay
-    if (intake == null) {
-      intake = new Intake(new RollerSystemIO() {});
-    }
-    if (hopper == null) {
-      hopper = new Hopper(new RollerSystemIO() {});
-    }
-    if (hood == null) {
-      hood = new Hood(new HoodIO() {});
-    }
-    if (flywheel == null) {
-      flywheel = new Flywheel(new FlywheelIO() {});
-    }
-    if (turret == null) {
-      turret = new Turret(new TurretIO() {});
-    }
-    if (kicker == null) {
-      kicker = new Kicker(new RollerSystemIO() {}, new RollerSystemIO() {});
-    }
-    if (leds == null) {
-      leds = new Leds(new LedsIO() {});
-    }
+    if (intake == null) intake = new Intake(new RollerSystemIO() {});
+    if (hopper == null) hopper = new Hopper(new RollerSystemIO() {});
+    if (hood == null) hood = new Hood(new HoodIO() {});
+    if (flywheel == null) flywheel = new Flywheel(new FlywheelIO() {});
+    if (turret == null) turret = new Turret(new TurretIO() {});
+    if (kicker == null) kicker = new Kicker(new RollerSystemIO() {}, new RollerSystemIO() {});
 
-    // Set up auto routines
+    turret.setDefaultCommand(turret.runTrackTargetCommand());
+    hood.setDefaultCommand(hood.runTrackTargetCommand());
+    flywheel.setDefaultCommand(flywheel.runTrackTargetCommand());
+
     autoChooser = new LoggedDashboardChooser<>("Auto Choices", AutoBuilder.buildAutoChooser());
     autoChooser.addDefaultOption("Do Nothing", Commands.none());
     autoChooser.addOption(
@@ -182,18 +160,14 @@ public class RobotContainer {
 
     SmartDashboard.putData("AutoChooser", autoChooser.getSendableChooser());
 
-    // Configure the button bindings
     configureButtonBindings();
 
-    // Set default commands
-    hood.setDefaultCommand(hood.runTrackTargetCommand());
-    turret.setDefaultCommand(turret.runTrackTargetCommand());
-    flywheel.setDefaultCommand(flywheel.runTrackTargetCommand());
-    intake.setDefaultCommand(
-        Commands.startEnd(
-            () -> intake.setGoal(Intake.Goal.INTAKE),
-            () -> intake.setGoal(Intake.Goal.STOP),
-            intake));
+    drive.setDefaultCommand(
+        DriveCommands.joystickDrive(
+            drive,
+            () -> TBC.getLeftY() - secondary.getLeftY(),
+            () -> TBC.getLeftX() - secondary.getLeftX(),
+            () -> -TBC.getRightX() - secondary.getRightX()));
   }
 
   private Command joystickApproach(Supplier<Pose2d> approachPose) {
@@ -205,24 +179,9 @@ public class RobotContainer {
     return drive.getPose().exp(drive.getChassisSpeeds().toTwist2d(seconds));
   }
 
-  /** Create the bindings between buttons and commands. */
   private void configureButtonBindings() {
-    // Drive controls
-    DoubleSupplier driverX = () -> TBC.getLeftY() - secondary.getLeftY();
-    DoubleSupplier driverY = () -> TBC.getLeftX() - secondary.getLeftX();
-    DoubleSupplier driverOmega = () -> -TBC.getRightX() - secondary.getRightX();
-    drive.setDefaultCommand(DriveCommands.joystickDrive(drive, driverX, driverY, driverOmega));
-
-    // ***** TBC CONTROLLER *****
     TBC.x().onTrue(hood.zeroCommand().alongWith(turret.zeroCommand()));
-    // TBC
-    //     .leftTrigger()
-    //     .negate()
-    //     .whileTrue(
-    //         Commands.startEnd(
-    //             () -> intake.setGoal(Intake.Goal.INTAKE),
-    //             () -> intake.setGoal(Intake.Goal.STOP),
-    //             intake));
+
     TBC.rightTrigger()
         .whileTrue(
             Commands.parallel(
@@ -238,45 +197,23 @@ public class RobotContainer {
                     () -> kicker.setGoal(Kicker.Goal.OUTTAKE),
                     () -> kicker.setGoal(Kicker.Goal.STOP),
                     kicker)));
-    TBC.LeftPaddle()
-        .whileTrue(
-            flywheel
-                .runFixedCommand(presetFlywheelSpeedRadPerSec)
-                .alongWith(
-                    hood.runFixedCommand(
-                        () -> Units.degreesToRadians(presetHoodAngleDegrees.get()), () -> 0.0),
-                    turret.runTrackTargetActiveShootingCommand()));
-    TBC.rightBumper()
-        .negate()
-        .whileTrue(turret.runTrackTargetActiveShootingCommand())
-        .and(hood::atGoal)
-        .and(flywheel::atGoal)
-        .and(turret::atGoal)
-        .whileTrue(
-            Commands.parallel(
-                Commands.startEnd(
-                    () -> hopper.setGoal(Hopper.Goal.SHOOT),
-                    () -> hopper.setGoal(Hopper.Goal.STOP),
-                    hopper),
-                Commands.startEnd(
-                    () -> kicker.setGoal(Kicker.Goal.SHOOT),
-                    () -> kicker.setGoal(Kicker.Goal.STOP),
-                    kicker)))
-        .onFalse(
-            Commands.startEnd(
-                    () -> kicker.setGoal(Kicker.Goal.OUTTAKE),
-                    () -> kicker.setGoal(Kicker.Goal.STOP),
-                    kicker)
-                .withTimeout(0.5));
 
     TBC.leftBumper()
-        .and(TBC.rightBumper())
-        .and(TBC.a().negate())
         .whileTrue(
             joystickApproach(
                 () ->
                     FieldConstants.LeftTrench.getNearestLeftTrench(
                         getFuturePose(alignPredictionSeconds.get()))));
+    
+    TBC.rightBumper()
+        .whileTrue(
+          joystickApproach(
+            () ->
+            FieldConstants.RightTrench.getNearestRightTrench(
+              getFuturePose(alignPredictionSeconds.get())
+            )
+          )
+        );
 
     TBC.a()
         .whileTrue(
@@ -285,7 +222,6 @@ public class RobotContainer {
                     FieldConstants.Hub.getNearestHubCenter(
                         getFuturePose(alignPredictionSeconds.get()))));
 
-    // Reset gyro
     TBC.y()
         .onTrue(
             Commands.runOnce(
@@ -295,28 +231,19 @@ public class RobotContainer {
                                 new Pose2d(
                                     RobotState.getInstance().getEstimatedPose().getTranslation(),
                                     AllianceFlipUtil.apply(Rotation2d.kZero))))
-                .withName("ResetGyro")
                 .ignoringDisable(true));
   }
 
-  // ***** SECONDARY CONTROLLER *****
-
-  /** Update dashboard outputs. */
   public void updateDashboardOutputs() {
-    // Publish match time
     SmartDashboard.putNumber("Match Time", DriverStation.getMatchTime());
-
-    // Controller disconnected alerts
     TBCDisconnected.set(!DriverStation.isJoystickConnected(TBC.getHID().getPort()));
     secondaryDisconnected.set(!DriverStation.isJoystickConnected(secondary.getHID().getPort()));
   }
 
-  /** Returns the current AprilTag layout type. */
   public AprilTagLayoutType getSelectedAprilTagLayout() {
     return FieldConstants.defaultAprilTagType;
   }
 
-  /** Returns the autonomous command for the Robot class. */
   public Command getAutonomousCommand() {
     return autoChooser.get();
   }

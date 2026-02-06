@@ -1,9 +1,27 @@
-// Copyright (C) 2026 FRC 6328
-// http://github.com/Mechanical-Advantage
+// Team: FRC 1721 - Concord Robotics (Tidal Force)
+// Year: 2025-2026
+// Code: Public codebase for our REBUILT frc robot
+// License: MIT License (See LICENSE file for full text)
 //
-// Use of this source code is governed by an MIT-style
-// license that can be found in the LICENSE file at
-// the root directory of this project.
+// Copyright (c) 2025-2026 Concord Robotics
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in all
+// copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN an ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
 
 package org.tidalforce.frc2026;
 
@@ -214,7 +232,7 @@ public class FieldConstants {
         new Translation3d(LinesVertical.oppHubCenter, fieldWidth - openingWidth, openingHeight);
 
     public static final Pose2d leftTrenchCenter =
-        AprilTagLayoutType.OFFICIAL.getLayout().getTagPose(7).get().toPose2d();
+        AprilTagLayoutType.OFFICIAL.getLayout().getTagPose(12).get().toPose2d();
 
     public static Pose2d getNearestLeftTrench(Pose2d currentPose) {
       return currentPose.nearest(List.of(FieldConstants.LeftTrench.leftTrenchCenter));
@@ -241,6 +259,13 @@ public class FieldConstants {
         new Translation3d(LinesVertical.oppHubCenter, openingWidth, openingHeight);
     public static final Translation3d oppOpeningTopRight =
         new Translation3d(LinesVertical.oppHubCenter, 0, openingHeight);
+
+    public static final Pose2d rightTrenchCenter =
+        AprilTagLayoutType.OFFICIAL.getLayout().getTagPose(7).get().toPose2d();
+
+    public static Pose2d getNearestRightTrench(Pose2d currentPose) {
+      return currentPose.nearest(List.of(FieldConstants.RightTrench.rightTrenchCenter));
+    }
   }
 
   /** Tower related constants */

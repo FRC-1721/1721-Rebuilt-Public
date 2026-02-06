@@ -74,6 +74,7 @@ import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 import org.littletonrobotics.junction.AutoLogOutput;
 import org.littletonrobotics.junction.Logger;
+import org.tidalforce.frc2026.RobotState;
 import org.tidalforce.frc2026.generated.TunerConstants;
 import org.tidalforce.frc2026.util.LocalADStarAK;
 
@@ -223,6 +224,11 @@ public class Drive extends SubsystemBase {
       // 4. Add the incremental change to the Pigeon Sim State
       // We multiply by the loop time (0.02s or 20ms) to get the delta angle for this cycle.
       m_gyrosim.addYaw(omegaDegreesPerSec * 0.020);
+
+      Pose2d simPose = getPose();
+
+      // 1. Update RobotState with the simulated pose
+      RobotState.getInstance().resetPose(simPose);
     }
   }
 
@@ -297,6 +303,12 @@ public class Drive extends SubsystemBase {
     boolean gyroAvailable = gyroInputs.connected || (RobotBase.isSimulation() && m_gyrosim != null);
 
     gyroDisconnectedAlert.set(!gyroAvailable && !RobotBase.isSimulation());
+
+    // Update RobotState for the turret and other subsystems
+    Pose2d currentPose = getPose();
+    RobotState.getInstance()
+        .resetPose(currentPose); // or addOdometryObservation if you want history
+
     Logger.recordOutput("Odometry/Robot3d", pose3d);
     Logger.recordOutput("Robot/ComponentPoses", new Pose3d[] {elevatorPose3d, intakePose3d});
   }

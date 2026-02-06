@@ -88,7 +88,7 @@ public class Turret extends FullSubsystem {
       }
       case SIM -> {
         maxVelocity.initDefault(10.0);
-        kP.initDefault(100.0);
+        kP.initDefault(20.0);
         kD.initDefault(0.0);
         kA.initDefault(0.0);
       }
@@ -106,9 +106,9 @@ public class Turret extends FullSubsystem {
   private final TurretIOOutputs outputs = new TurretIOOutputs();
 
   @Getter @Setter @AutoLogOutput private ShootState shootState = ShootState.ACTIVE_SHOOTING;
-  private Rotation2d goalAngle = Rotation2d.kZero;
-  private double goalVelocity = 0.0;
   private double lastGoalAngle = 0.0;
+  private Supplier<Rotation2d> fixedAngleSupplier = null;
+  private DoubleSupplier fixedVelocitySupplier = null;
 
   private final Debouncer motorConnectedDebouncer = new Debouncer(0.5, DebounceType.kFalling);
 
@@ -148,6 +148,11 @@ public class Turret extends FullSubsystem {
       atGoal = false;
     }
 
+    if (DriverStation.isEnabled() && !turretZeroed && inputs.motorConnected)
+      if (!turretZeroed && DriverStation.isEnabled()) {
+        zero();
+      }
+
     // Update profile constraints
     if (maxVelocity.hasChanged(hashCode())) {
       profile =
@@ -159,6 +164,8 @@ public class Turret extends FullSubsystem {
     if (DriverStation.isDisabled()) {
       setpoint = new State(inputs.positionRads, 0.0);
       lastGoalAngle = getPosition();
+      fixedAngleSupplier = null;
+      fixedVelocitySupplier = null;
     }
 
     // Publish position
@@ -184,8 +191,23 @@ public class Turret extends FullSubsystem {
       double robotAngularVelocity =
           RobotState.getInstance().getFieldVelocity().omegaRadiansPerSecond;
 
-      Rotation2d robotRelativeGoalAngle = goalAngle.minus(robotAngle);
-      double robotRelativeGoalVelocity = goalVelocity - robotAngularVelocity;
+      Rotation2d fieldGoalAngle;
+      double fieldGoalVelocity;
+
+      // Decide where the goal comes from
+      if (fixedAngleSupplier != null && shootState == ShootState.TRACKING) {
+        fieldGoalAngle = fixedAngleSupplier.get();
+        fieldGoalVelocity = fixedVelocitySupplier.getAsDouble();
+      } else {
+        var params = ShotCalculator.getInstance().getParameters();
+        fieldGoalAngle = params.turretAngle();
+        fieldGoalVelocity = params.turretVelocity();
+      }
+
+      // Convert field-relative → robot-relative
+      Rotation2d robotRelativeGoalAngle = fieldGoalAngle.minus(robotAngle);
+
+      double robotRelativeGoalVelocity = fieldGoalVelocity - robotAngularVelocity;
 
       boolean hasBestAngle = false;
       double bestAngle = 0;
@@ -224,9 +246,20 @@ public class Turret extends FullSubsystem {
           EqualsUtil.epsilonEquals(bestAngle, setpoint.position)
               && EqualsUtil.epsilonEquals(robotRelativeGoalVelocity, setpoint.velocity);
       Logger.recordOutput("Turret/GoalPositionRad", bestAngle);
+      Logger.recordOutput(
+          "Turret/ShotCalcAngleRad",
+          ShotCalculator.getInstance().getParameters().turretAngle().getRadians());
+
+      Logger.recordOutput("Turret/AfterSchedulerAlive", Timer.getFPGATimestamp());
+
       Logger.recordOutput("Turret/GoalVelocityRadPerSec", robotRelativeGoalVelocity);
       Logger.recordOutput("Turret/SetpointPositionRad", setpoint.position);
       Logger.recordOutput("Turret/SetpointVelocityRadPerSec", setpoint.velocity);
+      Logger.recordOutput(
+          "Turret/ShotCalcAngleRad",
+          ShotCalculator.getInstance().getParameters().turretAngle().getRadians());
+
+      Logger.recordOutput("Turret/RobotRelativeGoalRad", robotRelativeGoalAngle.getRadians());
 
       outputs.mode = TurretIOOutputMode.CLOSED_LOOP;
       outputs.position = setpoint.position - turretOffset;
@@ -237,11 +270,6 @@ public class Turret extends FullSubsystem {
 
     // Apply outputs
     turretIO.applyOutputs(outputs);
-  }
-
-  private void setFieldRelativeTarget(Rotation2d angle, double velocity) {
-    this.goalAngle = angle;
-    this.goalVelocity = velocity;
   }
 
   private void zero() {
@@ -262,8 +290,6 @@ public class Turret extends FullSubsystem {
   public Command runTrackTargetCommand() {
     return run(
         () -> {
-          var params = ShotCalculator.getInstance().getParameters();
-          setFieldRelativeTarget(params.turretAngle(), params.turretVelocity());
           setShootState(ShootState.TRACKING);
         });
   }
@@ -271,8 +297,6 @@ public class Turret extends FullSubsystem {
   public Command runTrackTargetActiveShootingCommand() {
     return run(
         () -> {
-          var params = ShotCalculator.getInstance().getParameters();
-          setFieldRelativeTarget(params.turretAngle(), params.turretVelocity());
           setShootState(ShootState.ACTIVE_SHOOTING);
         });
   }
@@ -280,7 +304,8 @@ public class Turret extends FullSubsystem {
   public Command runFixedCommand(Supplier<Rotation2d> angle, DoubleSupplier velocity) {
     return run(
         () -> {
-          setFieldRelativeTarget(angle.get(), velocity.getAsDouble());
+          fixedAngleSupplier = angle;
+          fixedVelocitySupplier = velocity;
           setShootState(ShootState.TRACKING);
         });
   }
