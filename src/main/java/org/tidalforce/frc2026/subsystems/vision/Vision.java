@@ -32,6 +32,7 @@ import edu.wpi.first.math.VecBuilder;
 import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.math.geometry.Pose3d;
 import edu.wpi.first.math.geometry.Rotation2d;
+import edu.wpi.first.math.geometry.Translation2d;
 import edu.wpi.first.math.numbers.N1;
 import edu.wpi.first.math.numbers.N3;
 import edu.wpi.first.wpilibj.Alert;
@@ -40,15 +41,18 @@ import edu.wpi.first.wpilibj2.command.SubsystemBase;
 import java.util.LinkedList;
 import java.util.List;
 import org.littletonrobotics.junction.Logger;
+import org.tidalforce.frc2026.subsystems.drive.Drive;
 import org.tidalforce.frc2026.subsystems.vision.VisionIO.PoseObservationType;
 
 public class Vision extends SubsystemBase {
   private final VisionConsumer consumer;
+  private final Drive drive;
   private final VisionIO[] io;
   private final VisionIOInputsAutoLogged[] inputs;
   private final Alert[] disconnectedAlerts;
 
-  public Vision(VisionConsumer consumer, VisionIO... io) {
+  public Vision(Drive drive, VisionConsumer consumer, VisionIO... io) {
+    this.drive = drive;
     this.consumer = consumer;
     this.io = io;
 
@@ -196,5 +200,100 @@ public class Vision extends SubsystemBase {
         Pose2d visionRobotPoseMeters,
         double timestampSeconds,
         Matrix<N3, N1> visionMeasurementStdDevs);
+  }
+
+  public Pose2d getFuelMassPose(int cameraIndex) {
+    VisionIO.YoloDetection[] detections = inputs[cameraIndex].fuelDetections;
+    if (detections == null || detections.length < 3) {
+      return null;
+    }
+
+    // === FILTER DETECTIONS BY CONFIDENCE ===
+    double sumX = 0.0;
+    double sumY = 0.0;
+    double sumW = 0.0;
+    double latestTimestamp = 0.0;
+
+    for (VisionIO.YoloDetection d : detections) {
+      if (d.confidence() < 0.4) {
+        continue; // reject low-confidence detections
+      }
+      double w = d.confidence();
+      sumX += d.cx() * w;
+      sumY += d.cy() * w;
+      sumW += w;
+      if (d.timestamp() > latestTimestamp) {
+        latestTimestamp = d.timestamp();
+      }
+    }
+
+    if (sumW <= 1e-6) {
+      return null;
+    }
+
+    double cx = sumX / sumW;
+    double cy = sumY / sumW;
+
+    // === NORMALIZE PIXELS → [-1, 1] ===
+    double nx = (cx / kCamWidthPx - 0.5) * 2.0;
+    double ny = (0.5 - cy / kCamHeightPx) * 2.0;
+
+    // Reject extreme values (camera glitches)
+    if (Math.abs(nx) > 1.2 || Math.abs(ny) > 1.2) {
+      return null;
+    }
+
+    // === PIXEL → ANGLES ===
+    double yaw = nx * (kHFOV / 2.0);
+    double pitch = ny * (kVFOV / 2.0);
+
+    // === CAMERA RAY IN CAMERA FRAME ===
+    edu.wpi.first.math.geometry.Translation3d rayCamera =
+        new edu.wpi.first.math.geometry.Translation3d(
+            Math.cos(pitch) * Math.cos(yaw), Math.cos(pitch) * Math.sin(yaw), Math.sin(pitch));
+
+    // === SELECT CAMERA TRANSFORM ===
+    edu.wpi.first.math.geometry.Transform3d robotToCamera;
+    if (cameraIndex == 0) {
+      robotToCamera = VisionConstants.robotToCamera0;
+    } else {
+      robotToCamera = VisionConstants.robotToCamera1;
+    }
+
+    // === TRANSFORM RAY TO ROBOT FRAME ===
+    edu.wpi.first.math.geometry.Translation3d rayRobot =
+        rayCamera.rotateBy(robotToCamera.getRotation());
+    edu.wpi.first.math.geometry.Translation3d camPosRobot = robotToCamera.getTranslation();
+
+    // === NUMERICAL SAFETY CHECK ===
+    double rayZ = rayRobot.getZ();
+    if (Math.abs(rayZ) < 1e-6) {
+      return null; // ray parallel to ground
+    }
+
+    // === INTERSECT WITH FLOOR (z = 0) ===
+    double t = -camPosRobot.getZ() / rayZ;
+    if (t < 0.0 || t > 50.0) { // reject absurd distances
+      return null;
+    }
+
+    edu.wpi.first.math.geometry.Translation3d hitPointRobot = camPosRobot.plus(rayRobot.times(t));
+
+    // Reject unrealistic distances (fuel should be near robot)
+    if (hitPointRobot.getNorm() > 10.0) {
+      return null;
+    }
+
+    // === LATENCY COMPENSATION ===
+    Pose2d robotPose = drive.getPoseAtTime(latestTimestamp);
+
+    // === ROBOT → FIELD TRANSFORM ===
+    Translation2d fieldPoint =
+        hitPointRobot
+            .toTranslation2d()
+            .rotateBy(robotPose.getRotation())
+            .plus(robotPose.getTranslation());
+
+    return new Pose2d(fieldPoint, new Rotation2d());
   }
 }

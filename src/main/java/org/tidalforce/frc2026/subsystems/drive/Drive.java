@@ -113,6 +113,10 @@ public class Drive extends SubsystemBase {
   private final Field2d m_field = new Field2d();
   private final Pigeon2 m_gryo;
 
+  private final java.util.NavigableMap<Double, Pose2d> poseHistory = new java.util.TreeMap<>();
+
+  private static final int MAX_POSE_HISTORY_SIZE = 200;
+
   private Pigeon2SimState m_gyrosim;
 
   private final GyroIO gyroIO;
@@ -311,6 +315,14 @@ public class Drive extends SubsystemBase {
 
     Logger.recordOutput("Odometry/Robot3d", pose3d);
     Logger.recordOutput("Robot/ComponentPoses", new Pose3d[] {elevatorPose3d, intakePose3d});
+
+    double timestamp = edu.wpi.first.wpilibj.Timer.getFPGATimestamp();
+    poseHistory.put(timestamp, getPose());
+
+    // Limit history size to prevent memory growth
+    while (poseHistory.size() > MAX_POSE_HISTORY_SIZE) {
+      poseHistory.pollFirstEntry();
+    }
   }
 
   /**
@@ -481,5 +493,15 @@ public class Drive extends SubsystemBase {
       double deltaThetaRadians = chassisSpeeds.omegaRadiansPerSecond / ODOMETRY_FREQUENCY;
       return rawGyroRotation.plus(new Rotation2d(deltaThetaRadians));
     }
+  }
+
+  public Pose2d getPoseAtTime(double timestamp) {
+    java.util.Map.Entry<Double, Pose2d> entry = poseHistory.floorEntry(timestamp);
+
+    if (entry != null) {
+      return entry.getValue();
+    }
+
+    return getPose();
   }
 }

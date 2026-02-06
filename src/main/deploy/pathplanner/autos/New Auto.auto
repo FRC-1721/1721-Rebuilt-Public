@@ -7,13 +7,13 @@
         {
           "type": "path",
           "data": {
-            "pathName": "Path1"
+            "pathName": "Example Path"
           }
         },
         {
-          "type": "path",
+          "type": "named",
           "data": {
-            "pathName": "Path2"
+            "name": "RushFuel"
           }
         }
       ]

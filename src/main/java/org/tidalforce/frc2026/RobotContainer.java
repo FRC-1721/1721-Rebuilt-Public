@@ -31,15 +31,20 @@ import static org.tidalforce.frc2026.subsystems.vision.VisionConstants.robotToCa
 import static org.tidalforce.frc2026.subsystems.vision.VisionConstants.robotToCamera1;
 
 import com.pathplanner.lib.auto.AutoBuilder;
+import com.pathplanner.lib.auto.NamedCommands;
+import com.pathplanner.lib.path.PathConstraints;
 import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.math.geometry.Rotation2d;
+import edu.wpi.first.math.util.Units;
 import edu.wpi.first.wpilibj.Alert;
 import edu.wpi.first.wpilibj.Alert.AlertType;
 import edu.wpi.first.wpilibj.DriverStation;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.Commands;
+import edu.wpi.first.wpilibj2.command.DeferredCommand;
 import edu.wpi.first.wpilibj2.command.button.CommandXboxController;
+import java.util.Set;
 import java.util.function.Supplier;
 import lombok.experimental.ExtensionMethod;
 import org.littletonrobotics.junction.networktables.LoggedDashboardChooser;
@@ -120,6 +125,7 @@ public class RobotContainer {
                   new ModuleIOTalonFX(TunerConstants.BackRight));
           vision =
               new Vision(
+                  drive,
                   drive::addVisionMeasurement,
                   new VisionIOPhotonVision(camera0Name, robotToCamera0));
         }
@@ -135,6 +141,7 @@ public class RobotContainer {
           leds = LEDsConstants.get();
           vision =
               new Vision(
+                  drive,
                   drive::addVisionMeasurement,
                   new VisionIOPhotonVisionSim(camera0Name, robotToCamera0, drive::getPose),
                   new VisionIOPhotonVisionSim(camera1Name, robotToCamera1, drive::getPose));
@@ -152,6 +159,8 @@ public class RobotContainer {
     turret.setDefaultCommand(turret.runTrackTargetCommand());
     hood.setDefaultCommand(hood.runTrackTargetCommand());
     flywheel.setDefaultCommand(flywheel.runTrackTargetCommand());
+
+    registerNamedCommands();
 
     autoChooser = new LoggedDashboardChooser<>("Auto Choices", AutoBuilder.buildAutoChooser());
     autoChooser.addDefaultOption("Do Nothing", Commands.none());
@@ -204,16 +213,28 @@ public class RobotContainer {
                 () ->
                     FieldConstants.LeftTrench.getNearestLeftTrench(
                         getFuturePose(alignPredictionSeconds.get()))));
-    
+
+    // TBC.rightBumper()
+    //    .whileTrue(
+    //        joystickApproach(
+    //            () ->
+    //                FieldConstants.RightTrench.getNearestRightTrench(
+    //                    getFuturePose(alignPredictionSeconds.get()))));
+
     TBC.rightBumper()
-        .whileTrue(
-          joystickApproach(
-            () ->
-            FieldConstants.RightTrench.getNearestRightTrench(
-              getFuturePose(alignPredictionSeconds.get())
-            )
-          )
-        );
+        .onTrue(
+            new DeferredCommand(
+                () -> {
+                  Pose2d target = vision.getFuelMassPose(0);
+                  if (target == null) return Commands.none();
+
+                  return AutoBuilder.pathfindToPose(
+                      target,
+                      new PathConstraints(
+                          3.0, 4.0, Units.degreesToRadians(540), Units.degreesToRadians(720)),
+                      0.0);
+                },
+                Set.of(drive)));
 
     TBC.a()
         .whileTrue(
@@ -232,6 +253,26 @@ public class RobotContainer {
                                     RobotState.getInstance().getEstimatedPose().getTranslation(),
                                     AllianceFlipUtil.apply(Rotation2d.kZero))))
                 .ignoringDisable(true));
+  }
+
+  private void registerNamedCommands() {
+    switch (Constants.robot) {
+      default:
+        NamedCommands.registerCommand(
+            "RushFuel",
+            new DeferredCommand(
+                () -> {
+                  Pose2d target = vision.getFuelMassPose(0);
+                  if (target == null) return Commands.none();
+
+                  return AutoBuilder.pathfindToPose(
+                      target,
+                      new PathConstraints(
+                          3.0, 4.0, Units.degreesToRadians(540), Units.degreesToRadians(720)),
+                      0.0);
+                },
+                Set.of(drive)));
+    }
   }
 
   public void updateDashboardOutputs() {

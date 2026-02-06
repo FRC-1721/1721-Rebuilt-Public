@@ -23,20 +23,39 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-package org.tidalforce.frc2026;
+package org.tidalforce.frc2026.subsystems.vision;
 
-/** Automatically generated file containing build version information. */
-public final class BuildConstants {
-  public static final String MAVEN_GROUP = "";
-  public static final String MAVEN_NAME = "1721-Rebuilt-Public";
-  public static final String VERSION = "unspecified";
-  public static final int GIT_REVISION = 4;
-  public static final String GIT_SHA = "93322ff64f50d9b648bce049d8063b50304b452f";
-  public static final String GIT_DATE = "2026-01-28 18:01:34 EST";
-  public static final String GIT_BRANCH = "feat/turret";
-  public static final String BUILD_DATE = "2026-02-05 17:35:28 EST";
-  public static final long BUILD_UNIX_TIME = 1770330928232L;
-  public static final int DIRTY = 1;
+import edu.wpi.first.networktables.NetworkTable;
+import edu.wpi.first.networktables.NetworkTableInstance;
+import java.util.ArrayList;
+import java.util.List;
 
-  private BuildConstants() {}
+public class VisionIOYolo implements VisionIO {
+
+  private final NetworkTable table;
+
+  public VisionIOYolo() {
+    table = NetworkTableInstance.getDefault().getTable("yolo");
+  }
+
+  @Override
+  public void updateInputs(VisionIOInputs inputs) {
+    inputs.connected = true;
+
+    double[] raw = table.getEntry("fuel").getDoubleArray(new double[0]);
+
+    List<YoloDetection> detections = new ArrayList<>();
+
+    // Expected format: cx, cy, conf, timestamp repeating
+    for (int i = 0; i + 3 < raw.length; i += 4) {
+      double cx = raw[i];
+      double cy = raw[i + 1];
+      double conf = raw[i + 2];
+      double ts = raw[i + 3];
+
+      detections.add(new YoloDetection(cx, cy, conf, ts));
+    }
+
+    inputs.fuelDetections = detections.toArray(new YoloDetection[0]);
+  }
 }

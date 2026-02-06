@@ -56,6 +56,10 @@ import org.littletonrobotics.junction.wpilog.WPILOGReader;
 import org.littletonrobotics.junction.wpilog.WPILOGWriter;
 import org.tidalforce.frc2026.Constants.Mode;
 import org.tidalforce.frc2026.Constants.RobotType;
+import org.tidalforce.frc2026.subsystems.leds.LEDs;
+import org.tidalforce.frc2026.subsystems.leds.LightsIO;
+import org.tidalforce.frc2026.subsystems.leds.LightsIOCandle;
+import org.tidalforce.frc2026.subsystems.leds.LightsIOSim;
 import org.tidalforce.frc2026.subsystems.shooter.ShotCalculator;
 import org.tidalforce.frc2026.util.FullSubsystem;
 import org.tidalforce.frc2026.util.LoggedTracer;
@@ -65,10 +69,12 @@ public class Robot extends LoggedRobot {
   private static final double lowBatteryVoltage = 11.0;
   private static final double lowBatteryDisabledTime = 2.0;
 
+  private Command ledAutoCommand;
   private Command autonomousCommand;
   private double autoStart;
   private boolean autoMessagePrinted;
   private RobotContainer robotContainer;
+  private LEDs leds;
 
   private final Timer disabledTimer = new Timer();
   private final Alert lowBatteryAlert =
@@ -78,6 +84,8 @@ public class Robot extends LoggedRobot {
 
   public Robot() {
     super(Constants.loopPeriodSecs);
+
+    LightsIO ioLayer = null;
 
     // Record metadata
     Logger.recordMetadata("ProjectName", BuildConstants.MAVEN_NAME);
@@ -108,12 +116,15 @@ public class Robot extends LoggedRobot {
     // Set up data receivers & replay source
     switch (Constants.getMode()) {
       case REAL:
+        ioLayer = new LightsIOCandle("Lights1", null, null);
         Logger.addDataReceiver(new WPILOGWriter());
         Logger.addDataReceiver(new NT4Publisher());
         break;
 
       case SIM:
         // Running a physics simulator, log to NT
+
+        ioLayer = new LightsIOSim("Lights1");
         Logger.addDataReceiver(new NT4Publisher());
         break;
 
@@ -125,6 +136,8 @@ public class Robot extends LoggedRobot {
         Logger.addDataReceiver(new WPILOGWriter(outPath));
         break;
     }
+
+    this.leds = new LEDs(ioLayer);
 
     // Set timing mode
     setUseTiming(Constants.getMode() != Mode.REPLAY);
@@ -202,14 +215,32 @@ public class Robot extends LoggedRobot {
 
     // Instantiate RobotContainer
     robotContainer = new RobotContainer();
+
+    // Instantiate LEDs
+    // Instantiate LEDs (choose the correct constructor for your LEDs class)
+    // Option A: LEDs has a no-arg constructor
+
+    // Option B: LEDs requires an IO implementation
+    // leds = new LEDs(new LightsIO());
+
+    // Get the auto animation command from the LEDs subsystem
   }
 
-  /** This function is called periodically during all modes. */
+  /** Whether to display alerts related to hardware faults. */
+  public static boolean showHardwareAlerts() {
+    return Constants.getMode() != Mode.SIM && Timer.getTimestamp() > 30.0;
+  }
+
+  /** This function is called once when the robot is disabled. */
+  @Override
+  public void disabledInit() {}
+
+  /** This function is called periodically when disabled. */
+  @Override
+  public void disabledPeriodic() {}
+
   @Override
   public void robotPeriodic() {
-
-    // Main periodic functions
-    LoggedTracer.reset();
     VirtualSubsystem.runAllPeriodic();
     CommandScheduler.getInstance().run();
     LoggedTracer.record("Commands");
@@ -251,27 +282,19 @@ public class Robot extends LoggedRobot {
     LoggedTracer.record("RobotPeriodic");
   }
 
-  /** Whether to display alerts related to hardware faults. */
-  public static boolean showHardwareAlerts() {
-    return Constants.getMode() != Mode.SIM && Timer.getTimestamp() > 30.0;
-  }
-
-  /** This function is called once when the robot is disabled. */
-  @Override
-  public void disabledInit() {}
-
-  /** This function is called periodically when disabled. */
-  @Override
-  public void disabledPeriodic() {}
-
   /** This autonomous runs the autonomous command selected by your {@link RobotContainer} class. */
   @Override
   public void autonomousInit() {
     autoStart = Timer.getTimestamp();
     autonomousCommand = robotContainer.getAutonomousCommand();
+    ledAutoCommand = leds.runAutoAnimation();
 
     if (autonomousCommand != null) {
       CommandScheduler.getInstance().schedule(autonomousCommand);
+    }
+
+    if (ledAutoCommand != null) {
+      CommandScheduler.getInstance().schedule(ledAutoCommand);
     }
   }
 
@@ -284,6 +307,10 @@ public class Robot extends LoggedRobot {
   public void teleopInit() {
     if (autonomousCommand != null) {
       autonomousCommand.cancel();
+    }
+
+    if (ledAutoCommand != null) {
+      ledAutoCommand.cancel();
     }
   }
 

@@ -62,8 +62,7 @@ public class DevBotMech3d {
                     Translation3d.kZero, new Rotation3d(0.0, 0.0, turretAngle.getRadians())));
     var hoodPose =
         turretPose.transformBy(
-            new Transform3d(
-                0.105, 0.0, 0.092, new Rotation3d(0.0, -hoodAngle.getRadians(), Math.PI)));
+            new Transform3d(0, 0, 0, new Rotation3d(0.0, -hoodAngle.getRadians(), Math.PI)));
     var intakePose = IntakeConstants.robotToIntake.toPose3d();
     Logger.recordOutput(key + "/Components", turretPose, hoodPose, intakePose);
 

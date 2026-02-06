@@ -38,6 +38,7 @@ public class VisionConstants {
   // Camera names, must match names configured on coprocessor
   public static String camera0Name = "camera_0";
   public static String camera1Name = "camera_1";
+  public static String camera2Name = "ObjDetCamera";
 
   // Robot to camera transforms
   // (Not used by Limelight, configure in web UI instead)
@@ -67,4 +68,15 @@ public class VisionConstants {
   public static double linearStdDevMegatag2Factor = 0.5; // More stable than full 3D solve
   public static double angularStdDevMegatag2Factor =
       Double.POSITIVE_INFINITY; // No rotation data available
+
+  // Object Detection Camera?
+  public static double kCamHeight = 0.75;
+  public static double kFuelHeight = 0.05;
+  public static double kCamPitch = -0.4;
+
+  public static int kCamWidthPx = 1280;
+  public static int kCamHeightPx = 720;
+
+  public static double kHFOV = Math.toRadians(70);
+  public static double kVFOV = Math.toRadians(43);
 }

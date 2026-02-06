@@ -37,10 +37,13 @@ public interface VisionIO {
         new TargetObservation(new Rotation2d(), new Rotation2d());
     public PoseObservation[] poseObservations = new PoseObservation[0];
     public int[] tagIds = new int[0];
+    public YoloDetection[] fuelDetections = new YoloDetection[0];
   }
 
   /** Represents the angle to a simple target, not used for pose estimation. */
   public static record TargetObservation(Rotation2d tx, Rotation2d ty) {}
+
+  public static record YoloDetection(double cx, double cy, double confidence, double timestamp) {}
 
   /** Represents a robot pose sample used for pose estimation. */
   public static record PoseObservation(
