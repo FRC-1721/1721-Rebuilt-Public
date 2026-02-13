@@ -211,11 +211,12 @@ public class Robot extends LoggedRobot {
     // Main periodic functions
     LoggedTracer.reset();
     VirtualSubsystem.runAllPeriodic();
-    CommandScheduler.getInstance().run();
     LoggedTracer.record("Commands");
     VirtualSubsystem.runAllPeriodicAfterScheduler();
     FullSubsystem.runAllPeriodicAfterScheduler();
     LoggedTracer.record("PeriodicAfterScheduler");
+    robotContainer.updateBatteryTelemetry();
+    CommandScheduler.getInstance().run();
 
     // Print auto duration
     if (autonomousCommand != null) {

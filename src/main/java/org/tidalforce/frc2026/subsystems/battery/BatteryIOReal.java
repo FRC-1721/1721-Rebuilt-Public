@@ -23,20 +23,25 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-package org.tidalforce.frc2026;
+package org.tidalforce.frc2026.subsystems.battery;
 
-/** Automatically generated file containing build version information. */
-public final class BuildConstants {
-  public static final String MAVEN_GROUP = "";
-  public static final String MAVEN_NAME = "1721-Rebuilt-Public";
-  public static final String VERSION = "unspecified";
-  public static final int GIT_REVISION = 5;
-  public static final String GIT_SHA = "36b050705701541dcb3c686bb65bfe15dea6c265";
-  public static final String GIT_DATE = "2026-02-06 15:50:47 EST";
-  public static final String GIT_BRANCH = "main";
-  public static final String BUILD_DATE = "2026-02-13 16:40:07 EST";
-  public static final long BUILD_UNIX_TIME = 1771018807945L;
-  public static final int DIRTY = 1;
+import edu.wpi.first.wpilibj.SerialPort;
 
-  private BuildConstants() {}
+public class BatteryIOReal implements BatteryIO {
+  private SerialPort serial;
+
+  public BatteryIOReal() {
+    try {
+      serial = new SerialPort(9600, SerialPort.Port.kUSB);
+    } catch (Exception e) {
+      System.out.println("NFC Reader not found.");
+    }
+  }
+
+  @Override
+  public void updateInputs(BatteryIOInputs inputs) {
+    if (serial != null && serial.getBytesReceived() > 0) {
+      inputs.rawID = serial.readString().trim();
+    }
+  }
 }

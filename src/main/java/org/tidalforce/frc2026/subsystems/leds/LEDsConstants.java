@@ -44,9 +44,11 @@ import edu.wpi.first.wpilibj.util.Color;
 import java.util.List;
 import org.tidalforce.frc2026.Constants;
 import org.tidalforce.frc2026.Ports;
+import org.tidalforce.frc2026.util.Device;
 
 public class LEDsConstants {
   public static final String NAME = "MainLEDs";
+  public static final Device.CAN CANDLE_ID = new Device.CAN(30, "rio");
 
   public static final LEDSegment CANDLE_LEDS = new LEDSegment(0, 7, 0);
   public static final LEDSegment FRONT_STRIP = new LEDSegment(8, 10, 1);

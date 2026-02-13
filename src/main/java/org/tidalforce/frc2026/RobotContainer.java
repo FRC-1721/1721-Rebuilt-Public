@@ -46,7 +46,10 @@ import org.littletonrobotics.junction.networktables.LoggedDashboardChooser;
 import org.tidalforce.frc2026.FieldConstants.AprilTagLayoutType;
 import org.tidalforce.frc2026.commands.DriveCommands;
 import org.tidalforce.frc2026.commands.JoystickApproachCommand;
+import org.tidalforce.frc2026.commands.JoystickFacePointCommand;
 import org.tidalforce.frc2026.generated.TunerConstants;
+import org.tidalforce.frc2026.subsystems.battery.BatteryIO;
+import org.tidalforce.frc2026.subsystems.battery.BatteryIOReal;
 import org.tidalforce.frc2026.subsystems.drive.Drive;
 import org.tidalforce.frc2026.subsystems.drive.GyroIO;
 import org.tidalforce.frc2026.subsystems.drive.GyroIOPigeon2;
@@ -57,11 +60,15 @@ import org.tidalforce.frc2026.subsystems.intake.Intake;
 import org.tidalforce.frc2026.subsystems.kicker.Kicker;
 import org.tidalforce.frc2026.subsystems.leds.LEDs;
 import org.tidalforce.frc2026.subsystems.leds.LEDsConstants;
+import org.tidalforce.frc2026.subsystems.leds.LightsIOCandle;
 import org.tidalforce.frc2026.subsystems.rollers.RollerSystemIO;
+import org.tidalforce.frc2026.subsystems.rollers.RollerSystemIOKraken;
 import org.tidalforce.frc2026.subsystems.shooter.flywheel.Flywheel;
 import org.tidalforce.frc2026.subsystems.shooter.flywheel.FlywheelIO;
+import org.tidalforce.frc2026.subsystems.shooter.flywheel.FlywheelIOKraken;
 import org.tidalforce.frc2026.subsystems.shooter.hood.Hood;
 import org.tidalforce.frc2026.subsystems.shooter.hood.HoodIO;
+import org.tidalforce.frc2026.subsystems.shooter.hood.HoodIOKraken;
 import org.tidalforce.frc2026.subsystems.shooter.turret.Turret;
 import org.tidalforce.frc2026.subsystems.shooter.turret.TurretIO;
 import org.tidalforce.frc2026.subsystems.shooter.turret.TurretIOSim;
@@ -72,6 +79,7 @@ import org.tidalforce.frc2026.util.LoggedTunableNumber;
 import org.tidalforce.frc2026.util.controllers.TriggerUtil;
 import org.tidalforce.frc2026.util.controllers.TurtleBeachRematchAdvController;
 import org.tidalforce.frc2026.util.geometry.AllianceFlipUtil;
+import org.tidalforce.lib.BatteryTracker;
 
 @ExtensionMethod({TriggerUtil.class})
 public class RobotContainer {
@@ -89,6 +97,9 @@ public class RobotContainer {
   // Controllers
   private final TurtleBeachRematchAdvController TBC = new TurtleBeachRematchAdvController(0);
   private final CommandXboxController secondary = new CommandXboxController(1);
+
+  // Battery Tracker
+  private BatteryTracker batteryTracker;
 
   public LoggedTunableNumber speedMultiplier =
       new LoggedTunableNumber("Drivebase Speed Multiplier", 1.0);
@@ -109,7 +120,60 @@ public class RobotContainer {
   public RobotContainer() {
     if (Constants.getMode() != Constants.Mode.REPLAY) {
       switch (Constants.robot) {
-        case COMP -> {}
+        case COMP -> {
+          drive =
+              new Drive(
+                  new GyroIOPigeon2() {},
+                  new ModuleIOTalonFX(TunerConstants.FrontLeft),
+                  new ModuleIOTalonFX(TunerConstants.FrontRight),
+                  new ModuleIOTalonFX(TunerConstants.BackLeft),
+                  new ModuleIOTalonFX(TunerConstants.BackRight));
+          vision =
+              new Vision(
+                  drive::addVisionMeasurement,
+                  new VisionIOPhotonVision(camera0Name, robotToCamera0),
+                  new VisionIOPhotonVision(camera1Name, robotToCamera1));
+          // leds = LEDsConstants.get();
+          leds =
+              new LEDs(
+                  new LightsIOCandle(
+                      org.tidalforce.frc2026.subsystems.leds.LEDsConstants.NAME,
+                      org.tidalforce.frc2026.subsystems.leds.LEDsConstants.CANDLE_ID,
+                      org.tidalforce.frc2026.subsystems.leds.LEDsConstants.CANDLE_CONFIG));
+          hood =
+              new Hood(
+                  new HoodIOKraken(
+                      org.tidalforce.frc2026.subsystems.shooter.hood.HoodConstants.HOODID,
+                      org.tidalforce.frc2026.subsystems.shooter.hood.HoodConstants.CAN_BUS));
+          flywheel =
+              new Flywheel(
+                  new FlywheelIOKraken(
+                      org.tidalforce.frc2026.subsystems.shooter.flywheel.FlywheelConstants
+                          .FYLWHEELIDMAINID,
+                      org.tidalforce.frc2026.subsystems.shooter.flywheel.FlywheelConstants
+                          .FLYWHEELFOLLOWID,
+                      org.tidalforce.frc2026.subsystems.shooter.flywheel.FlywheelConstants
+                          .CAN_BUS));
+          kicker =
+              new Kicker(
+                  new RollerSystemIOKraken(
+                      org.tidalforce.frc2026.subsystems.rollers.RollerConstants.KICKER_ID,
+                      org.tidalforce.frc2026.subsystems.rollers.RollerConstants.CAN_BUS),
+                  new RollerSystemIOKraken(
+                      org.tidalforce.frc2026.subsystems.rollers.RollerConstants.KICKER_ID,
+                      org.tidalforce.frc2026.subsystems.rollers.RollerConstants.CAN_BUS));
+          hopper =
+              new Hopper(
+                  new RollerSystemIOKraken(
+                      org.tidalforce.frc2026.subsystems.rollers.RollerConstants.HOPPER_ID,
+                      org.tidalforce.frc2026.subsystems.rollers.RollerConstants.CAN_BUS));
+          intake =
+              new Intake(
+                  new RollerSystemIOKraken(
+                      org.tidalforce.frc2026.subsystems.rollers.RollerConstants.INTAKE_ID,
+                      org.tidalforce.frc2026.subsystems.rollers.RollerConstants.CAN_BUS));
+          batteryTracker = new BatteryTracker(new BatteryIOReal());
+        }
         case DEV -> {
           drive =
               new Drive(
@@ -122,6 +186,7 @@ public class RobotContainer {
               new Vision(
                   drive::addVisionMeasurement,
                   new VisionIOPhotonVision(camera0Name, robotToCamera0));
+          batteryTracker = new BatteryTracker(new BatteryIOReal());
         }
         case SIM -> {
           drive =
@@ -138,6 +203,7 @@ public class RobotContainer {
                   drive::addVisionMeasurement,
                   new VisionIOPhotonVisionSim(camera0Name, robotToCamera0, drive::getPose),
                   new VisionIOPhotonVisionSim(camera1Name, robotToCamera1, drive::getPose));
+          batteryTracker = new BatteryTracker(new BatteryIO() {});
         }
       }
     }
@@ -175,6 +241,14 @@ public class RobotContainer {
         drive, () -> -TBC.getLeftY() * speedMultiplier.getAsDouble(), approachPose);
   }
 
+  private Command joystickFaceCommand(Supplier<Pose2d> facePose) {
+    return new JoystickFacePointCommand(
+        drive,
+        () -> -TBC.getLeftY() * speedMultiplier.getAsDouble(),
+        () -> -TBC.getLeftX() * speedMultiplier.getAsDouble(),
+        facePose);
+  }
+
   private Pose2d getFuturePose(double seconds) {
     return drive.getPose().exp(drive.getChassisSpeeds().toTwist2d(seconds));
   }
@@ -182,19 +256,21 @@ public class RobotContainer {
   private void configureButtonBindings() {
     TBC.x().onTrue(hood.zeroCommand().alongWith(turret.zeroCommand()));
 
+    TBC.b()
+        .whileTrue(
+            joystickFaceCommand(
+                () ->
+                    FieldConstants.Hub.redHubCenter));
+
     TBC.rightTrigger()
         .whileTrue(
             Commands.parallel(
                 Commands.startEnd(
-                    () -> intake.setGoal(Intake.Goal.OUTTAKE),
-                    () -> intake.setGoal(Intake.Goal.STOP),
-                    intake),
-                Commands.startEnd(
-                    () -> hopper.setGoal(Hopper.Goal.OUTTAKE),
+                    () -> hopper.setGoal(Hopper.Goal.SHOOT),
                     () -> hopper.setGoal(Hopper.Goal.STOP),
                     hopper),
                 Commands.startEnd(
-                    () -> kicker.setGoal(Kicker.Goal.OUTTAKE),
+                    () -> kicker.setGoal(Kicker.Goal.SHOOT),
                     () -> kicker.setGoal(Kicker.Goal.STOP),
                     kicker)));
 
@@ -204,16 +280,13 @@ public class RobotContainer {
                 () ->
                     FieldConstants.LeftTrench.getNearestLeftTrench(
                         getFuturePose(alignPredictionSeconds.get()))));
-    
+
     TBC.rightBumper()
         .whileTrue(
-          joystickApproach(
-            () ->
-            FieldConstants.RightTrench.getNearestRightTrench(
-              getFuturePose(alignPredictionSeconds.get())
-            )
-          )
-        );
+            joystickApproach(
+                () ->
+                    FieldConstants.RightTrench.getNearestRightTrench(
+                        getFuturePose(alignPredictionSeconds.get()))));
 
     TBC.a()
         .whileTrue(
@@ -238,6 +311,10 @@ public class RobotContainer {
     SmartDashboard.putNumber("Match Time", DriverStation.getMatchTime());
     TBCDisconnected.set(!DriverStation.isJoystickConnected(TBC.getHID().getPort()));
     secondaryDisconnected.set(!DriverStation.isJoystickConnected(secondary.getHID().getPort()));
+  }
+
+  public void updateBatteryTelemetry() {
+    batteryTracker.periodic();
   }
 
   public AprilTagLayoutType getSelectedAprilTagLayout() {

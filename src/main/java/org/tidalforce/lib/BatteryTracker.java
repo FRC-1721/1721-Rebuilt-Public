@@ -23,20 +23,34 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-package org.tidalforce.frc2026;
+package org.tidalforce.lib;
 
-/** Automatically generated file containing build version information. */
-public final class BuildConstants {
-  public static final String MAVEN_GROUP = "";
-  public static final String MAVEN_NAME = "1721-Rebuilt-Public";
-  public static final String VERSION = "unspecified";
-  public static final int GIT_REVISION = 5;
-  public static final String GIT_SHA = "36b050705701541dcb3c686bb65bfe15dea6c265";
-  public static final String GIT_DATE = "2026-02-06 15:50:47 EST";
-  public static final String GIT_BRANCH = "main";
-  public static final String BUILD_DATE = "2026-02-13 16:40:07 EST";
-  public static final long BUILD_UNIX_TIME = 1771018807945L;
-  public static final int DIRTY = 1;
+import java.util.Map;
+import org.littletonrobotics.junction.Logger;
+import org.tidalforce.frc2026.subsystems.battery.BatteryIO;
+import org.tidalforce.frc2026.subsystems.battery.BatteryIOInputsAutoLogged;
 
-  private BuildConstants() {}
+public class BatteryTracker {
+  private static final Map<String, String> lookupTable =
+      Map.of(
+          "ID_001", "2026-Alpha",
+          "ID_002", "2026_Bravo");
+
+  private final BatteryIO io;
+  private final BatteryIOInputsAutoLogged inputs = new BatteryIOInputsAutoLogged();
+  private String batteryname = "unknown";
+
+  public BatteryTracker(BatteryIO io) {
+    this.io = io;
+  }
+
+  public void periodic() {
+    io.updateInputs(inputs);
+    Logger.processInputs("BatteryTracker", inputs);
+
+    if (!inputs.rawID.isEmpty()) {
+      batteryname = lookupTable.getOrDefault(inputs.rawID, "Unregistered-" + inputs.rawID);
+    }
+    Logger.recordOutput("Battery/Name", batteryname);
+  }
 }

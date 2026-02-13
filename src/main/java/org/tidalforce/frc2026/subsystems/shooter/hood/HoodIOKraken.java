@@ -25,62 +25,42 @@
 
 package org.tidalforce.frc2026.subsystems.shooter.hood;
 
+import com.ctre.phoenix6.controls.VoltageOut;
+import com.ctre.phoenix6.hardware.TalonFX;
 import edu.wpi.first.math.MathUtil;
-import edu.wpi.first.math.system.plant.DCMotor;
-import edu.wpi.first.math.util.Units;
-import edu.wpi.first.wpilibj.simulation.SingleJointedArmSim;
-import org.tidalforce.frc2026.Constants;
+import edu.wpi.first.wpilibj.DriverStation;
 
-public class HoodIOSim implements HoodIO {
-  private static final DCMotor motorModel = DCMotor.getKrakenX44(1);
-  private final SingleJointedArmSim sim =
-      new SingleJointedArmSim(
-          motorModel, 1.0, .004, .33, 0.0, Units.degreesToRadians(45), false, 0, null);
+public class HoodIOKraken implements HoodIO {
+  private final TalonFX motor;
+  private final VoltageOut voltageRequest = new VoltageOut(0.0);
 
-  private double currentOutput = 0.0;
   private double appliedVolts = 0.0;
-  private boolean currentControl = false;
 
-  public HoodIOSim() {}
+  public HoodIOKraken(int motorId, String canBus) {
+    motor = new TalonFX(motorId, canBus);
+  }
 
   @Override
   public void updateInputs(HoodIOInputs inputs) {
-    if (currentControl) {
-      appliedVolts = motorModel.getVoltage(currentOutput, sim.getVelocityRadPerSec());
-    } else {
-      appliedVolts = 0.0;
-    }
+    inputs.connected = motor.isAlive();
 
-    // Update sim state
-    sim.setInputVoltage(MathUtil.clamp(appliedVolts, -12.0, 12.0));
-    sim.update(Constants.loopPeriodSecs);
+    inputs.positionRads = motor.getPosition().getValueAsDouble() * 2.0 * Math.PI;
+    inputs.velocityRadsPerSec = motor.getVelocity().getValueAsDouble() * 2.0 * Math.PI;
 
-    inputs.connected = true;
-    inputs.positionRads = sim.getAngleRads();
-    inputs.velocityRadsPerSec = sim.getVelocityRadPerSec();
     inputs.appliedVoltage = appliedVolts;
-    inputs.supplyCurrentAmps = sim.getCurrentDrawAmps();
-    inputs.torqueCurrentAmps = currentOutput;
-    inputs.tempCelsius = 0.0;
+    inputs.supplyCurrentAmps = motor.getSupplyCurrent().getValueAsDouble();
+    inputs.torqueCurrentAmps = motor.getTorqueCurrent().getValueAsDouble();
+    inputs.tempCelsius = motor.getDeviceTemp().getValueAsDouble();
   }
 
   @Override
   public void applyOutputs(HoodIOOutputs outputs) {
-    switch (outputs.mode) {
-      case BRAKE -> {
-        currentControl = false;
-      }
-      case COAST -> {
-        currentOutput = 0.0;
-        currentControl = true;
-      }
-      case CLOSED_LOOP -> {
-        currentOutput =
-            outputs.feedforward
-                + (sim.getAngleRads() - outputs.positionRad) * outputs.kP
-                + (sim.getVelocityRadPerSec() - outputs.velocityRadsPerSec) * outputs.kD;
-        currentControl = true;
-      }
+    if (DriverStation.isDisabled()) {
+      appliedVolts = 0.0;
+    } else {
+      appliedVolts = MathUtil.clamp(outputs.appliedVoltage, -12.0, 12.0);
     }
+
+    motor.setControl(voltageRequest.withOutput(appliedVolts));
   }
 }

@@ -32,10 +32,10 @@ public interface HoodIO {
   @AutoLog
   public static class HoodIOInputs {
     // TODO: add encoder
-    boolean motorConnected = false;
+    boolean connected = false;
     double positionRads = 0.0;
     double velocityRadsPerSec = 0.0;
-    double appliedVolts = 0.0;
+    double appliedVoltage = 0.0;
     double supplyCurrentAmps = 0.0;
     double torqueCurrentAmps = 0.0;
     double tempCelsius = 0.0;
@@ -52,6 +52,7 @@ public interface HoodIO {
     public HoodIOOutputMode mode = HoodIOOutputMode.BRAKE;
     // Closed loop control
     public double positionRad = 0.0;
+    public double appliedVoltage = 0.0;
     public double velocityRadsPerSec = 0.0;
     public double feedforward = 0.0;
     public double kP = 0.0;

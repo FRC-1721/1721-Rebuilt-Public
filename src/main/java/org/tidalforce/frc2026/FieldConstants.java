@@ -28,6 +28,8 @@ package org.tidalforce.frc2026;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import edu.wpi.first.apriltag.AprilTagFieldLayout;
 import edu.wpi.first.math.geometry.Pose2d;
+import edu.wpi.first.math.geometry.Rotation2d;
+import edu.wpi.first.math.geometry.Transform2d;
 import edu.wpi.first.math.geometry.Translation2d;
 import edu.wpi.first.math.geometry.Translation3d;
 import edu.wpi.first.math.util.Units;
@@ -153,8 +155,11 @@ public class FieldConstants {
     public static final Pose2d leftFace =
         AprilTagLayoutType.OFFICIAL.getLayout().getTagPose(21).get().toPose2d();
 
+    public static final Transform2d redHub =
+        new Transform2d(new Translation2d(-width/2, -AprilTagLayoutType.OFFICIAL.getLayout().getTagPose(4).get().getY() + fieldWidth/2), new Rotation2d());
+
     public static final Pose2d redHubCenter =
-        AprilTagLayoutType.OFFICIAL.getLayout().getTagPose(9).get().toPose2d();
+        AprilTagLayoutType.OFFICIAL.getLayout().getTagPose(4).get().toPose2d().plus(redHub);
 
     public static Pose2d getNearestHubCenter(Pose2d currentPose) {
       return currentPose.nearest(List.of(FieldConstants.Hub.redHubCenter));

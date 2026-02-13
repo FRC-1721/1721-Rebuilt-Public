@@ -23,20 +23,11 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-package org.tidalforce.frc2026;
+package org.tidalforce.frc2026.subsystems.shooter.flywheel;
 
-/** Automatically generated file containing build version information. */
-public final class BuildConstants {
-  public static final String MAVEN_GROUP = "";
-  public static final String MAVEN_NAME = "1721-Rebuilt-Public";
-  public static final String VERSION = "unspecified";
-  public static final int GIT_REVISION = 5;
-  public static final String GIT_SHA = "36b050705701541dcb3c686bb65bfe15dea6c265";
-  public static final String GIT_DATE = "2026-02-06 15:50:47 EST";
-  public static final String GIT_BRANCH = "main";
-  public static final String BUILD_DATE = "2026-02-13 16:40:07 EST";
-  public static final long BUILD_UNIX_TIME = 1771018807945L;
-  public static final int DIRTY = 1;
+public final class FlywheelConstants {
+  public static final int FYLWHEELIDMAINID = 1;
+  public static final int FLYWHEELFOLLOWID = 2;
 
-  private BuildConstants() {}
+  public static final String CAN_BUS = "rio"; // or "canivore"
 }

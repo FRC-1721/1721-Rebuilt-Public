@@ -109,7 +109,7 @@ public class Hood extends FullSubsystem {
     Logger.processInputs("Hood", inputs);
 
     motorDisconnectedAlert.set(
-        Robot.showHardwareAlerts() && !motorConnectedDebouncer.calculate(inputs.motorConnected));
+        Robot.showHardwareAlerts() && !motorConnectedDebouncer.calculate(inputs.connected));
 
     // Update tunable numbers
     outputs.kP = kP.get();
