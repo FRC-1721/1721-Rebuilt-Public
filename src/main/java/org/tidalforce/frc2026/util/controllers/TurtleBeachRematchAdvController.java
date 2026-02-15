@@ -25,36 +25,25 @@
 
 package org.tidalforce.frc2026.util.controllers;
 
-import edu.wpi.first.wpilibj.event.EventLoop;
-import edu.wpi.first.wpilibj2.command.CommandScheduler;
 import edu.wpi.first.wpilibj2.command.button.CommandXboxController;
 import edu.wpi.first.wpilibj2.command.button.Trigger;
 
-/** Interface for 1721's custom bindings on a Turtle Beach Rematch Advanced controller. */
+/**
+ * Custom wrapper for the Turtle Beach Rematch Advanced controller. Treats back paddles as triggers.
+ */
 public class TurtleBeachRematchAdvController extends CommandXboxController {
+
   public TurtleBeachRematchAdvController(int port) {
     super(port);
   }
 
-  /**
-   * Constructs a Trigger instance around the upper left paddle button's digital signal.
-   *
-   * @return a Trigger instance representing the upper left paddle button's digital signal attached
-   *     to the {@link CommandScheduler#getDefaultButtonLoop() default scheduler button loop}.
-   * @see #start(EventLoop)
-   */
+  /** Trigger representing the left paddle. Maps to the left stick press (L3) by default. */
   public Trigger LeftPaddle() {
-    return povUp().or(povUpLeft()).or(povUpRight());
+    return leftStick(); // Use L3 as the paddle
   }
 
-  /**
-   * Constructs a Trigger instance around the lower left paddle button's digital signal.
-   *
-   * @return a Trigger instance representing the lower left paddle button's digital signal attached
-   *     to the {@link CommandScheduler#getDefaultButtonLoop() default scheduler button loop}.
-   * @see #start(EventLoop)
-   */
+  /** Trigger representing the right paddle. Maps to the right stick press (R3) by default. */
   public Trigger RightPaddle() {
-    return povDown().or(povDownLeft()).or(povDownRight());
+    return rightStick(); // Use R3 as the paddle
   }
 }

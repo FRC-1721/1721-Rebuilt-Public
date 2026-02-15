@@ -351,12 +351,13 @@ public class RobotContainer {
 
     // My magnum opus
 
-    TBC.a().whileTrue(
-        testPathfindTo(() -> AllianceFlipUtil.apply(FieldConstants.LeftTrench.leftTest)));
+    TBC.LeftPaddle()
+        .whileTrue(
+            testPathfindTo(() -> AllianceFlipUtil.apply(FieldConstants.LeftTrench.leftTest)));
 
-    TBC.LeftPaddle().whileTrue(
-        compPathfindTo(() -> AllianceFlipUtil.apply(FieldConstants.LeftTrench.leftTest))
-    );
+    TBC.RightPaddle()
+        .whileTrue(
+            compPathfindTo(() -> AllianceFlipUtil.apply(FieldConstants.RightTrench.rightTest)));
 
     TBC.y()
         .onTrue(
