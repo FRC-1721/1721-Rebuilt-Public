@@ -34,6 +34,10 @@ public final class Constants {
   public static final double loopPeriodSecs = 0.02;
   public static final double loopPeriodWatchdogSecs = 0.2;
 
+  public static final Mode simMode = Mode.SIM;
+
+  public static final Mode currentMode = RobotBase.isReal() ? Mode.REAL : simMode;
+
   public static Mode getMode() {
     return switch (robot) {
       case COMP, DEV -> RobotBase.isReal() ? Mode.REAL : Mode.REPLAY;

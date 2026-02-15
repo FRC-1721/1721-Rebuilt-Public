@@ -67,6 +67,8 @@ public class Flywheel extends FullSubsystem {
   @AutoLogOutput
   private boolean atGoal = false;
 
+  private double goalRadsPerSec = 0.0;
+
   static {
     switch (Constants.robot) {
       case COMP -> {
@@ -119,6 +121,10 @@ public class Flywheel extends FullSubsystem {
         Robot.showHardwareAlerts() && !motorConnectedDebouncer.calculate(inputs.connected));
   }
 
+  public void setGoal(double velocityRadsPerSec) {
+    this.goalRadsPerSec = velocityRadsPerSec;
+  }
+
   @Override
   public void periodicAfterScheduler() {
     io.applyOutputs(outputs);
@@ -161,5 +167,9 @@ public class Flywheel extends FullSubsystem {
 
   public Command stopCommand() {
     return runOnce(this::stop);
+  }
+
+  public Command runGoalCommand() {
+    return runEnd(() -> runVelocity(goalRadsPerSec), this::stop);
   }
 }

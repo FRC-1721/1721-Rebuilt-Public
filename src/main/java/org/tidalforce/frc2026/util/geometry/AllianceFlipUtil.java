@@ -30,6 +30,7 @@ import edu.wpi.first.wpilibj.DriverStation;
 import org.tidalforce.frc2026.Constants;
 import org.tidalforce.frc2026.FieldConstants;
 
+/** All inputs must be defined in the BLUE alliance coordinate frame. */
 public class AllianceFlipUtil {
   public static double applyX(double x) {
     return shouldFlip() ? FieldConstants.fieldLength - x : x;

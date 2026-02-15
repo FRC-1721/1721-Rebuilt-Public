@@ -155,14 +155,19 @@ public class FieldConstants {
     public static final Pose2d leftFace =
         AprilTagLayoutType.OFFICIAL.getLayout().getTagPose(21).get().toPose2d();
 
-    public static final Transform2d redHub =
-        new Transform2d(new Translation2d(-width/2, -AprilTagLayoutType.OFFICIAL.getLayout().getTagPose(4).get().getY() + fieldWidth/2), new Rotation2d());
+    public static final Transform2d hub =
+        new Transform2d(
+            new Translation2d(
+                -width / 2,
+                -AprilTagLayoutType.OFFICIAL.getLayout().getTagPose(26).get().getY()
+                    + fieldWidth / 2),
+            new Rotation2d());
 
-    public static final Pose2d redHubCenter =
-        AprilTagLayoutType.OFFICIAL.getLayout().getTagPose(4).get().toPose2d().plus(redHub);
+    public static final Pose2d hubCenter =
+        AprilTagLayoutType.OFFICIAL.getLayout().getTagPose(26).get().toPose2d().plus(hub);
 
     public static Pose2d getNearestHubCenter(Pose2d currentPose) {
-      return currentPose.nearest(List.of(FieldConstants.Hub.redHubCenter));
+      return currentPose.nearest(List.of(FieldConstants.Hub.hubCenter));
     }
   }
 
@@ -235,6 +240,11 @@ public class FieldConstants {
         new Translation3d(LinesVertical.oppHubCenter, fieldWidth, openingHeight);
     public static final Translation3d oppOpeningTopRight =
         new Translation3d(LinesVertical.oppHubCenter, fieldWidth - openingWidth, openingHeight);
+
+    public static final Translation2d leftNZTest =
+        new Translation2d(LinesVertical.hubCenter + 2, fieldWidth / 2 - 2);
+
+    public static final Pose2d leftTest = new Pose2d(leftNZTest, Rotation2d.kZero);
 
     public static final Pose2d leftTrenchCenter =
         AprilTagLayoutType.OFFICIAL.getLayout().getTagPose(12).get().toPose2d();

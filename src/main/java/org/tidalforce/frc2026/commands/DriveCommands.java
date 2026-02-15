@@ -25,6 +25,7 @@
 
 package org.tidalforce.frc2026.commands;
 
+import com.pathplanner.lib.path.PathConstraints;
 import edu.wpi.first.math.MathUtil;
 import edu.wpi.first.math.controller.ProfiledPIDController;
 import edu.wpi.first.math.filter.SlewRateLimiter;
@@ -49,6 +50,15 @@ import java.util.function.Supplier;
 import org.tidalforce.frc2026.subsystems.drive.Drive;
 
 public class DriveCommands {
+  public static PathConstraints pathConstraints() {
+    return new PathConstraints(
+        4, // max translational velocity (m/s)
+        4, // max translational acceleration (m/s²)
+        Math.toRadians(540), // max angular velocity (rad/s)
+        Math.toRadians(720) // max angular acceleration (rad/s²)
+        );
+  }
+
   private static final double DEADBAND = 0.1;
   private static final double ANGLE_KP = 5.0;
   private static final double ANGLE_KD = 0.4;

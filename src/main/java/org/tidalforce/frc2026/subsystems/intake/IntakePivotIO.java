@@ -25,17 +25,39 @@
 
 package org.tidalforce.frc2026.subsystems.intake;
 
-import edu.wpi.first.math.geometry.Rotation3d;
-import edu.wpi.first.math.geometry.Transform3d;
+import org.littletonrobotics.junction.AutoLog;
 
-public class IntakeConstants {
-  public static Transform3d robotToIntake = new Transform3d(0, 0, 0, Rotation3d.kZero);
+public interface IntakePivotIO {
 
-  public static final int INTAKEPIVOT_ID = 40;
-  public static final int IN_POSITION = 0;
-  public static final int OUT_POSITION = 1;
+  /** Inputs collected from the pivot motor (position, velocity, current, etc.) */
+  @AutoLog
+  public static class IntakePivotIOInputs {
+    public boolean connected;
+    public double positionRads;
+    public double velocityRadsPerSec;
+    public double appliedVoltage;
+    public double supplyCurrentAmps;
+    public double torqueCurrentAmps;
+    public double tempCelsius;
+  }
 
-  public static final String CAN_BUS = "rio"; // or "canivore"
+  /** Outputs applied to the pivot motor (voltage, target position, brake mode) */
+  public static class IntakePivotIOOutputs {
+    public double appliedVoltage = 0.0;
+    public double targetPositionRads = 0.0;
+    public boolean brakeModeEnabled = true;
+  }
 
-  private IntakeConstants() {}
+  /** Update the inputs from hardware into the input object */
+  default void updateInputs(IntakePivotIOInputs inputs) {}
+
+  /** Apply outputs to the hardware */
+  default void applyOutputs(IntakePivotIOOutputs outputs) {}
+
+  /** Convenience methods for two setpoints */
+  default void setIn() {}
+
+  default void setOut() {}
+
+  default void stop() {}
 }

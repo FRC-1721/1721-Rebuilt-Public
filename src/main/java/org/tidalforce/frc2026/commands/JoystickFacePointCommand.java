@@ -81,7 +81,8 @@ public class JoystickFacePointCommand extends Command {
     Rotation2d offset = Rotation2d.fromRadians(0);
 
     // Compute desired heading
-    Rotation2d desiredHeading = new Rotation2d(robotToTarget.getX(), robotToTarget.getY()).plus(offset);
+    Rotation2d desiredHeading =
+        new Rotation2d(robotToTarget.getX(), robotToTarget.getY()).plus(offset);
 
     // Compute angular velocity
     double omega =
