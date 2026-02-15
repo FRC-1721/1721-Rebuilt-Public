@@ -50,7 +50,16 @@ import java.util.function.Supplier;
 import org.tidalforce.frc2026.subsystems.drive.Drive;
 
 public class DriveCommands {
-  public static PathConstraints pathConstraints() {
+  public static PathConstraints testPathConstraints() {
+    return new PathConstraints(
+        3, // max translational velocity (m/s)
+        3, // max translational acceleration (m/s²)
+        Math.toRadians(360), // max angular velocity (rad/s)
+        Math.toRadians(540) // max angular acceleration (rad/s²)
+        );
+  }
+
+  public static PathConstraints compPathConstraints() {
     return new PathConstraints(
         4, // max translational velocity (m/s)
         4, // max translational acceleration (m/s²)

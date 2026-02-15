@@ -272,9 +272,15 @@ public class RobotContainer {
         facePose);
   }
 
-  private Command pathfindTo(Supplier<Pose2d> pose) {
+  private Command testPathfindTo(Supplier<Pose2d> pose) {
     return Commands.defer(
-        () -> AutoBuilder.pathfindToPose(pose.get(), DriveCommands.pathConstraints()),
+        () -> AutoBuilder.pathfindToPose(pose.get(), DriveCommands.testPathConstraints()),
+        Set.of(drive));
+  }
+
+  private Command compPathfindTo(Supplier<Pose2d> pose) {
+    return Commands.defer(
+        () -> AutoBuilder.pathfindToPose(pose.get(), DriveCommands.compPathConstraints()),
         Set.of(drive));
   }
 
@@ -346,7 +352,11 @@ public class RobotContainer {
     // My magnum opus
 
     TBC.a().whileTrue(
-        pathfindTo(() -> AllianceFlipUtil.apply(FieldConstants.LeftTrench.leftTest)));
+        testPathfindTo(() -> AllianceFlipUtil.apply(FieldConstants.LeftTrench.leftTest)));
+
+    TBC.LeftPaddle().whileTrue(
+        compPathfindTo(() -> AllianceFlipUtil.apply(FieldConstants.LeftTrench.leftTest))
+    );
 
     TBC.y()
         .onTrue(
