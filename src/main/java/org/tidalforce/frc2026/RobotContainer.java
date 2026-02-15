@@ -351,13 +351,13 @@ public class RobotContainer {
 
     // My magnum opus (I know they're both on left and backwards, I am working on it)
 
-    TBC.RightPaddle()
+    TBC.LeftPaddle()
         .whileTrue(
             testPathfindTo(() -> AllianceFlipUtil.apply(FieldConstants.LeftTrench.leftTest)));
 
-    TBC.LeftPaddle()
+    TBC.RightPaddle()
         .whileTrue(
-            compPathfindTo(() -> AllianceFlipUtil.apply(FieldConstants.LeftTrench.rightTest)));
+            compPathfindTo(() -> AllianceFlipUtil.apply(FieldConstants.RightTrench.rightTest)));
 
     TBC.y()
         .onTrue(

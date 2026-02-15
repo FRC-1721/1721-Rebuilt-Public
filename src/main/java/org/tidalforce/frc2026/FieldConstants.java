@@ -242,12 +242,9 @@ public class FieldConstants {
         new Translation3d(LinesVertical.oppHubCenter, fieldWidth - openingWidth, openingHeight);
 
     public static final Translation2d leftNZTest =
-        new Translation2d(LinesVertical.hubCenter + 2, fieldWidth / 2 - 2);
-    public static final Translation2d rightNZTest =
         new Translation2d(LinesVertical.hubCenter + 2, fieldWidth / 2 + 2);
 
     public static final Pose2d leftTest = new Pose2d(leftNZTest, Rotation2d.kZero);
-    public static final Pose2d rightTest = new Pose2d(rightNZTest, Rotation2d.kZero);
 
     public static final Pose2d leftTrenchCenter =
         AprilTagLayoutType.OFFICIAL.getLayout().getTagPose(12).get().toPose2d();
@@ -277,6 +274,11 @@ public class FieldConstants {
         new Translation3d(LinesVertical.oppHubCenter, openingWidth, openingHeight);
     public static final Translation3d oppOpeningTopRight =
         new Translation3d(LinesVertical.oppHubCenter, 0, openingHeight);
+
+    public static final Translation2d rightNZTest =
+        new Translation2d(LinesVertical.hubCenter + 2, fieldWidth / 2 - 2);
+
+    public static final Pose2d rightTest = new Pose2d(rightNZTest, Rotation2d.kZero);
 
     public static final Pose2d rightTrenchCenter =
         AprilTagLayoutType.OFFICIAL.getLayout().getTagPose(7).get().toPose2d();
