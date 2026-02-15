@@ -349,7 +349,7 @@ public class RobotContainer {
     //                FieldConstants.Hub.getNearestHubCenter(
     //                    getFuturePose(alignPredictionSeconds.get()))));
 
-    // My magnum opus (I know they're both on left and backwards, I am working on it)
+    // My magnum opus
 
     TBC.LeftPaddle()
         .whileTrue(
