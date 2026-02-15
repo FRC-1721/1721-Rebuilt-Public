@@ -349,14 +349,15 @@ public class RobotContainer {
     //                FieldConstants.Hub.getNearestHubCenter(
     //                    getFuturePose(alignPredictionSeconds.get()))));
 
-    // My magnum opus
+    // My magnum opus (I know they're both on left and backwards, I am working on it)
 
-    TBC.a().whileTrue(
-        testPathfindTo(() -> AllianceFlipUtil.apply(FieldConstants.LeftTrench.leftTest)));
+    TBC.RightPaddle()
+        .whileTrue(
+            testPathfindTo(() -> AllianceFlipUtil.apply(FieldConstants.LeftTrench.leftTest)));
 
-    TBC.LeftPaddle().whileTrue(
-        compPathfindTo(() -> AllianceFlipUtil.apply(FieldConstants.LeftTrench.leftTest))
-    );
+    TBC.LeftPaddle()
+        .whileTrue(
+            compPathfindTo(() -> AllianceFlipUtil.apply(FieldConstants.LeftTrench.rightTest)));
 
     TBC.y()
         .onTrue(

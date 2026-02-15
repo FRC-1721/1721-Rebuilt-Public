@@ -243,8 +243,11 @@ public class FieldConstants {
 
     public static final Translation2d leftNZTest =
         new Translation2d(LinesVertical.hubCenter + 2, fieldWidth / 2 - 2);
+    public static final Translation2d rightNZTest =
+        new Translation2d(LinesVertical.hubCenter + 2, fieldWidth / 2 + 2);
 
     public static final Pose2d leftTest = new Pose2d(leftNZTest, Rotation2d.kZero);
+    public static final Pose2d rightTest = new Pose2d(rightNZTest, Rotation2d.kZero);
 
     public static final Pose2d leftTrenchCenter =
         AprilTagLayoutType.OFFICIAL.getLayout().getTagPose(12).get().toPose2d();
