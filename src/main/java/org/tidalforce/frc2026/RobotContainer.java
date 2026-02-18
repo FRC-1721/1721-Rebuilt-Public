@@ -395,6 +395,15 @@ public class RobotContainer {
         .whileTrue(
             compPathfindTo(() -> AllianceFlipUtil.apply(FieldConstants.RightTrench.rightTest)));
 
+    TBC.RightPaddle()
+        .multiPress(2, 0.1)
+        .debounce(0.05)
+        .onTrue(
+            Commands.run(
+                () -> compPathfindTo(() -> AllianceFlipUtil.apply(FieldConstants.RightTrench.rightTest)), 
+                drive)  
+        );
+
     TBC.y()
         .onTrue(
             Commands.runOnce(
