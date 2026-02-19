@@ -61,8 +61,8 @@ public class DriveCommands {
 
   public static PathConstraints compPathConstraints() {
     return new PathConstraints(
-        4, // max translational velocity (m/s)
-        4, // max translational acceleration (m/s²)
+        5, // max translational velocity (m/s)
+        6, // max translational acceleration (m/s²)
         Math.toRadians(540), // max angular velocity (rad/s)
         Math.toRadians(720) // max angular acceleration (rad/s²)
         );

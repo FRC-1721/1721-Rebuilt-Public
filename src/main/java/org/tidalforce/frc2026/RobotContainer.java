@@ -34,10 +34,12 @@ import com.pathplanner.lib.auto.AutoBuilder;
 import com.pathplanner.lib.auto.NamedCommands;
 import com.pathplanner.lib.commands.PathPlannerAuto;
 import com.pathplanner.lib.path.PathPlannerPath;
+import com.pathplanner.lib.util.PathPlannerLogging;
 import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.math.geometry.Rotation2d;
 import edu.wpi.first.wpilibj.Alert;
 import edu.wpi.first.wpilibj.Alert.AlertType;
+import edu.wpi.first.wpilibj.DriverStation.Alliance;
 import edu.wpi.first.wpilibj.DriverStation;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj2.command.Command;
@@ -114,7 +116,7 @@ public class RobotContainer {
   private BatteryTracker batteryTracker;
 
   public LoggedTunableNumber speedMultiplier =
-      new LoggedTunableNumber("Drivebase Speed Multiplier", 1.0);
+      new LoggedTunableNumber("Drivebase Speed Multiplier", 1.5);
   private LoggedTunableNumber alignPredictionSeconds =
       new LoggedTunableNumber("Align Prediction Seconds", 0.3);
 
@@ -257,6 +259,26 @@ public class RobotContainer {
             () -> -TBC.getLeftY() - secondary.getLeftY(),
             () -> -TBC.getLeftX() - secondary.getLeftX(),
             () -> -TBC.getRightX() - secondary.getRightX()));
+
+    if (drive != null) {
+      // Create a field object to send to Elastic
+      edu.wpi.first.wpilibj.smartdashboard.Field2d field =
+          new edu.wpi.first.wpilibj.smartdashboard.Field2d();
+      SmartDashboard.putData("Field", field);
+
+      // Log the active path (including Pathfinder paths)
+      PathPlannerLogging.setLogActivePathCallback(
+          (poses) -> {
+            field.getObject("path").setPoses(poses);
+          });
+
+      // Log the target pose (the "ghost" robot Elastic will show)
+      PathPlannerLogging.setLogTargetPoseCallback(
+          (pose) -> {
+            field.getObject("targetPose").setPose(pose);
+          });
+    }
+    ;
   }
 
   private Command joystickApproach(Supplier<Pose2d> approachPose) {
@@ -265,12 +287,26 @@ public class RobotContainer {
   }
 
   private Command joystickFaceCommand(Supplier<Pose2d> facePose) {
-    return new JoystickFacePointCommand(
-        drive,
-        () -> -TBC.getLeftY() * speedMultiplier.getAsDouble(),
-        () -> -TBC.getLeftX() * speedMultiplier.getAsDouble(),
-        facePose);
-  }
+  return new JoystickFacePointCommand(
+      drive,
+      () -> {
+        boolean isBlue =
+            DriverStation.getAlliance().orElse(DriverStation.Alliance.Red)
+                == DriverStation.Alliance.Blue;
+
+        double value = TBC.getLeftY() * speedMultiplier.getAsDouble();
+        return isBlue ? value : -value;
+      },
+      () -> {
+        boolean isBlue =
+            DriverStation.getAlliance().orElse(DriverStation.Alliance.Red)
+                == DriverStation.Alliance.Blue;
+
+        double value = TBC.getLeftX() * speedMultiplier.getAsDouble();
+        return isBlue ? value : -value;
+      },
+      facePose);
+}
 
   private Command testPathfindTo(Supplier<Pose2d> pose) {
     return Commands.defer(
@@ -358,6 +394,15 @@ public class RobotContainer {
     TBC.RightPaddle()
         .whileTrue(
             compPathfindTo(() -> AllianceFlipUtil.apply(FieldConstants.RightTrench.rightTest)));
+
+    TBC.RightPaddle()
+        .multiPress(2, 0.1)
+        .debounce(0.05)
+        .onTrue(
+            Commands.run(
+                () -> compPathfindTo(() -> AllianceFlipUtil.apply(FieldConstants.RightTrench.rightTest)), 
+                drive)  
+        );
 
     TBC.y()
         .onTrue(
