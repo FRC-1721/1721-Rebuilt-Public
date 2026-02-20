@@ -23,20 +23,24 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-package org.tidalforce.frc2026;
+package org.tidalforce.frc2026.util.geometry;
 
-/** Automatically generated file containing build version information. */
-public final class BuildConstants {
-  public static final String MAVEN_GROUP = "";
-  public static final String MAVEN_NAME = "1721-Rebuilt-Public";
-  public static final String VERSION = "unspecified";
-  public static final int GIT_REVISION = 14;
-  public static final String GIT_SHA = "7a1dc506712e34731cb222106da80cfc6323e1d0";
-  public static final String GIT_DATE = "2026-02-17 21:21:22 EST";
-  public static final String GIT_BRANCH = "DriverPractice";
-  public static final String BUILD_DATE = "2026-02-19 21:02:10 EST";
-  public static final long BUILD_UNIX_TIME = 1771552930582L;
-  public static final int DIRTY = 1;
+import edu.wpi.first.math.MathUtil;
+import edu.wpi.first.math.geometry.Translation2d;
 
-  private BuildConstants() {}
+public record Bounds(double minX, double maxX, double minY, double maxY) {
+  /** Whether the translation is contained within the bounds. */
+  public boolean contains(Translation2d translation) {
+    return translation.getX() >= minX()
+        && translation.getX() <= maxX()
+        && translation.getY() >= minY()
+        && translation.getY() <= maxY();
+  }
+
+  /** Clamps the translation to the bounds. */
+  public Translation2d clamp(Translation2d translation) {
+    return new Translation2d(
+        MathUtil.clamp(translation.getX(), minX(), maxX()),
+        MathUtil.clamp(translation.getY(), minY(), maxY()));
+  }
 }

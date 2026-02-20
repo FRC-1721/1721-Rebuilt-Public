@@ -39,7 +39,6 @@ import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.math.geometry.Rotation2d;
 import edu.wpi.first.wpilibj.Alert;
 import edu.wpi.first.wpilibj.Alert.AlertType;
-import edu.wpi.first.wpilibj.DriverStation.Alliance;
 import edu.wpi.first.wpilibj.DriverStation;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj2.command.Command;
@@ -287,26 +286,26 @@ public class RobotContainer {
   }
 
   private Command joystickFaceCommand(Supplier<Pose2d> facePose) {
-  return new JoystickFacePointCommand(
-      drive,
-      () -> {
-        boolean isBlue =
-            DriverStation.getAlliance().orElse(DriverStation.Alliance.Red)
-                == DriverStation.Alliance.Blue;
+    return new JoystickFacePointCommand(
+        drive,
+        () -> {
+          boolean isBlue =
+              DriverStation.getAlliance().orElse(DriverStation.Alliance.Red)
+                  == DriverStation.Alliance.Blue;
 
-        double value = TBC.getLeftY() * speedMultiplier.getAsDouble();
-        return isBlue ? value : -value;
-      },
-      () -> {
-        boolean isBlue =
-            DriverStation.getAlliance().orElse(DriverStation.Alliance.Red)
-                == DriverStation.Alliance.Blue;
+          double value = TBC.getLeftY() * speedMultiplier.getAsDouble();
+          return isBlue ? value : -value;
+        },
+        () -> {
+          boolean isBlue =
+              DriverStation.getAlliance().orElse(DriverStation.Alliance.Red)
+                  == DriverStation.Alliance.Blue;
 
-        double value = TBC.getLeftX() * speedMultiplier.getAsDouble();
-        return isBlue ? value : -value;
-      },
-      facePose);
-}
+          double value = TBC.getLeftX() * speedMultiplier.getAsDouble();
+          return isBlue ? value : -value;
+        },
+        facePose);
+  }
 
   private Command testPathfindTo(Supplier<Pose2d> pose) {
     return Commands.defer(
@@ -331,8 +330,7 @@ public class RobotContainer {
 
     TBC.x().onTrue(hood.zeroCommand().alongWith(turret.zeroCommand()));
 
-    TBC.b()
-        .whileTrue(joystickFaceCommand(() -> AllianceFlipUtil.apply(FieldConstants.Hub.hubCenter)));
+    TBC.b().whileTrue(joystickFaceCommand(() -> AllianceFlipUtil.apply(FieldConstants.Hub.hubCenter)));
 
     TBC.leftTrigger()
         .onTrue(
@@ -400,9 +398,10 @@ public class RobotContainer {
         .debounce(0.05)
         .onTrue(
             Commands.run(
-                () -> compPathfindTo(() -> AllianceFlipUtil.apply(FieldConstants.RightTrench.rightTest)), 
-                drive)  
-        );
+                () ->
+                    compPathfindTo(
+                        () -> AllianceFlipUtil.apply(FieldConstants.RightTrench.rightTest)),
+                drive));
 
     TBC.y()
         .onTrue(
