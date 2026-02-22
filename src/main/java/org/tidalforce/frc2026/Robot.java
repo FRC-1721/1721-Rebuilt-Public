@@ -214,8 +214,8 @@ public class Robot extends LoggedRobot {
     LoggedTracer.record("Commands");
     VirtualSubsystem.runAllPeriodicAfterScheduler();
     FullSubsystem.runAllPeriodicAfterScheduler();
-    LoggedTracer.record("PeriodicAfterScheduler");
-    robotContainer.updateBatteryTelemetry();
+    // LoggedTracer.record("PeriodicAfterScheduler");
+    // robotContainer.updateBatteryTelemetry();
     CommandScheduler.getInstance().run();
 
     // Print auto duration
