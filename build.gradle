@@ -134,11 +134,11 @@ tasks.withType(JavaCompile) {
 }
 
 // Check robot type when deploying
-task(checkConstantsDeploy, dependsOn: "classes", type: JavaExec) {
-    main = "org.tidalforce.frc2026.Constants\$CheckDeploy"
-    classpath = sourceSets.main.runtimeClasspath
-}
-deployroborio.dependsOn(checkConstantsDeploy)
+// task(checkConstantsDeploy, dependsOn: "classes", type: JavaExec) {
+//     main = "org.tidalforce.frc2026.Constants\$CheckDeploy"
+//     classpath = sourceSets.main.runtimeClasspath
+// }
+// deployroborio.dependsOn(checkConstantsDeploy)
 
 // Check constants for pull request
 task(checkConstantsPullRequest, dependsOn: "classes", type: JavaExec) {

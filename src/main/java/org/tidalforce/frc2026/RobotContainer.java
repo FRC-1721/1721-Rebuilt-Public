@@ -55,8 +55,8 @@ import org.tidalforce.frc2026.commands.DriveCommands;
 import org.tidalforce.frc2026.commands.JoystickApproachCommand;
 import org.tidalforce.frc2026.commands.JoystickFacePointCommand;
 import org.tidalforce.frc2026.generated.TunerConstants;
-import org.tidalforce.frc2026.subsystems.battery.BatteryIO;
-import org.tidalforce.frc2026.subsystems.battery.BatteryIOReal;
+// import org.tidalforce.frc2026.subsystems.battery.BatteryIO;
+// import org.tidalforce.frc2026.subsystems.battery.BatteryIOReal;
 import org.tidalforce.frc2026.subsystems.drive.Drive;
 import org.tidalforce.frc2026.subsystems.drive.GyroIO;
 import org.tidalforce.frc2026.subsystems.drive.GyroIOPigeon2;
@@ -65,20 +65,15 @@ import org.tidalforce.frc2026.subsystems.drive.ModuleIOTalonFX;
 import org.tidalforce.frc2026.subsystems.hopper.Hopper;
 import org.tidalforce.frc2026.subsystems.intake.Intake;
 import org.tidalforce.frc2026.subsystems.intake.IntakePivotIO;
-import org.tidalforce.frc2026.subsystems.intake.IntakePivotIOKraken;
 import org.tidalforce.frc2026.subsystems.intake.IntakePivotSubsystem;
 import org.tidalforce.frc2026.subsystems.kicker.Kicker;
 import org.tidalforce.frc2026.subsystems.leds.LEDs;
 import org.tidalforce.frc2026.subsystems.leds.LEDsConstants;
-import org.tidalforce.frc2026.subsystems.leds.LightsIOCandle;
 import org.tidalforce.frc2026.subsystems.rollers.RollerSystemIO;
-import org.tidalforce.frc2026.subsystems.rollers.RollerSystemIOKraken;
 import org.tidalforce.frc2026.subsystems.shooter.flywheel.Flywheel;
 import org.tidalforce.frc2026.subsystems.shooter.flywheel.FlywheelIO;
-import org.tidalforce.frc2026.subsystems.shooter.flywheel.FlywheelIOKraken;
 import org.tidalforce.frc2026.subsystems.shooter.hood.Hood;
 import org.tidalforce.frc2026.subsystems.shooter.hood.HoodIO;
-import org.tidalforce.frc2026.subsystems.shooter.hood.HoodIOKraken;
 import org.tidalforce.frc2026.subsystems.shooter.turret.Turret;
 import org.tidalforce.frc2026.subsystems.shooter.turret.TurretIO;
 import org.tidalforce.frc2026.subsystems.shooter.turret.TurretIOSim;
@@ -89,7 +84,8 @@ import org.tidalforce.frc2026.util.LoggedTunableNumber;
 import org.tidalforce.frc2026.util.controllers.TriggerUtil;
 import org.tidalforce.frc2026.util.controllers.TurtleBeachRematchAdvController;
 import org.tidalforce.frc2026.util.geometry.AllianceFlipUtil;
-import org.tidalforce.lib.BatteryTracker;
+
+// import org.tidalforce.lib.BatteryTracker;
 
 @ExtensionMethod({TriggerUtil.class})
 public class RobotContainer {
@@ -112,10 +108,10 @@ public class RobotContainer {
   private final CommandXboxController secondary = new CommandXboxController(1);
 
   // Battery Tracker
-  private BatteryTracker batteryTracker;
+  // private BatteryTracker batteryTracker;
 
   public LoggedTunableNumber speedMultiplier =
-      new LoggedTunableNumber("Drivebase Speed Multiplier", 1.5);
+      new LoggedTunableNumber("Drivebase Speed Multiplier", 1.1);
   private LoggedTunableNumber alignPredictionSeconds =
       new LoggedTunableNumber("Align Prediction Seconds", 0.3);
 
@@ -142,58 +138,58 @@ public class RobotContainer {
                   new ModuleIOTalonFX(TunerConstants.FrontRight),
                   new ModuleIOTalonFX(TunerConstants.BackLeft),
                   new ModuleIOTalonFX(TunerConstants.BackRight));
-          vision =
-              new Vision(
-                  drive::addVisionMeasurement,
-                  new VisionIOPhotonVision(camera0Name, robotToCamera0),
-                  new VisionIOPhotonVision(camera1Name, robotToCamera1));
+          //   vision =
+          //       new Vision(
+          //           drive::addVisionMeasurement,
+          //           new VisionIOPhotonVision(camera0Name, robotToCamera0),
+          //           new VisionIOPhotonVision(camera1Name, robotToCamera1));
           // leds = LEDsConstants.get();
-          leds =
-              new LEDs(
-                  new LightsIOCandle(
-                      org.tidalforce.frc2026.subsystems.leds.LEDsConstants.NAME,
-                      org.tidalforce.frc2026.subsystems.leds.LEDsConstants.CANDLE_ID,
-                      org.tidalforce.frc2026.subsystems.leds.LEDsConstants.CANDLE_CONFIG));
-          hood =
-              new Hood(
-                  new HoodIOKraken(
-                      org.tidalforce.frc2026.subsystems.shooter.hood.HoodConstants.HOODID,
-                      org.tidalforce.frc2026.subsystems.shooter.hood.HoodConstants.CAN_BUS));
-          flywheel =
-              new Flywheel(
-                  new FlywheelIOKraken(
-                      org.tidalforce.frc2026.subsystems.shooter.flywheel.FlywheelConstants
-                          .FYLWHEELIDMAINID,
-                      org.tidalforce.frc2026.subsystems.shooter.flywheel.FlywheelConstants
-                          .FLYWHEELFOLLOWID,
-                      org.tidalforce.frc2026.subsystems.shooter.flywheel.FlywheelConstants
-                          .CAN_BUS));
-          kicker =
-              new Kicker(
-                  new RollerSystemIOKraken(
-                      org.tidalforce.frc2026.subsystems.rollers.RollerConstants.KICKER_ID,
-                      org.tidalforce.frc2026.subsystems.rollers.RollerConstants.CAN_BUS),
-                  new RollerSystemIOKraken(
-                      org.tidalforce.frc2026.subsystems.rollers.RollerConstants.KICKER_ID,
-                      org.tidalforce.frc2026.subsystems.rollers.RollerConstants.CAN_BUS));
-          hopper =
-              new Hopper(
-                  new RollerSystemIOKraken(
-                      org.tidalforce.frc2026.subsystems.rollers.RollerConstants.HOPPER_ID,
-                      org.tidalforce.frc2026.subsystems.rollers.RollerConstants.CAN_BUS));
-          intake =
-              new Intake(
-                  new RollerSystemIOKraken(
-                      org.tidalforce.frc2026.subsystems.rollers.RollerConstants.INTAKE_ID,
-                      org.tidalforce.frc2026.subsystems.rollers.RollerConstants.CAN_BUS));
-          intakePivot =
-              new IntakePivotSubsystem(
-                  new IntakePivotIOKraken(
-                      org.tidalforce.frc2026.subsystems.intake.IntakeConstants.INTAKEPIVOT_ID,
-                      org.tidalforce.frc2026.subsystems.intake.IntakeConstants.CAN_BUS,
-                      org.tidalforce.frc2026.subsystems.intake.IntakeConstants.IN_POSITION,
-                      org.tidalforce.frc2026.subsystems.intake.IntakeConstants.OUT_POSITION));
-          batteryTracker = new BatteryTracker(new BatteryIOReal());
+          //   leds =
+          //       new LEDs(
+          //           new LightsIOCandle(
+          //               org.tidalforce.frc2026.subsystems.leds.LEDsConstants.NAME,
+          //               org.tidalforce.frc2026.subsystems.leds.LEDsConstants.CANDLE_ID,
+          //               org.tidalforce.frc2026.subsystems.leds.LEDsConstants.CANDLE_CONFIG));
+          //   hood =
+          //       new Hood(
+          //           new HoodIOKraken(
+          //               org.tidalforce.frc2026.subsystems.shooter.hood.HoodConstants.HOODID,
+          //               org.tidalforce.frc2026.subsystems.shooter.hood.HoodConstants.CAN_BUS));
+          //   flywheel =
+          //       new Flywheel(
+          //           new FlywheelIOKraken(
+          //               org.tidalforce.frc2026.subsystems.shooter.flywheel.FlywheelConstants
+          //                   .FYLWHEELIDMAINID,
+          //               org.tidalforce.frc2026.subsystems.shooter.flywheel.FlywheelConstants
+          //                   .FLYWHEELFOLLOWID,
+          //               org.tidalforce.frc2026.subsystems.shooter.flywheel.FlywheelConstants
+          //                   .CAN_BUS));
+          //   kicker =
+          //       new Kicker(
+          //           new RollerSystemIOKraken(
+          //               org.tidalforce.frc2026.subsystems.rollers.RollerConstants.KICKER_ID,
+          //               org.tidalforce.frc2026.subsystems.rollers.RollerConstants.CAN_BUS),
+          //           new RollerSystemIOKraken(
+          //               org.tidalforce.frc2026.subsystems.rollers.RollerConstants.KICKER_ID,
+          //               org.tidalforce.frc2026.subsystems.rollers.RollerConstants.CAN_BUS));
+          //   hopper =
+          //       new Hopper(
+          //           new RollerSystemIOKraken(
+          //               org.tidalforce.frc2026.subsystems.rollers.RollerConstants.HOPPER_ID,
+          //               org.tidalforce.frc2026.subsystems.rollers.RollerConstants.CAN_BUS));
+          //   intake =
+          //       new Intake(
+          //           new RollerSystemIOKraken(
+          //               org.tidalforce.frc2026.subsystems.rollers.RollerConstants.INTAKE_ID,
+          //               org.tidalforce.frc2026.subsystems.rollers.RollerConstants.CAN_BUS));
+          //   intakePivot =
+          //       new IntakePivotSubsystem(
+          //           new IntakePivotIOKraken(
+          //               org.tidalforce.frc2026.subsystems.intake.IntakeConstants.INTAKEPIVOT_ID,
+          //               org.tidalforce.frc2026.subsystems.intake.IntakeConstants.CAN_BUS,
+          //               org.tidalforce.frc2026.subsystems.intake.IntakeConstants.IN_POSITION,
+          //               org.tidalforce.frc2026.subsystems.intake.IntakeConstants.OUT_POSITION));
+          //   batteryTracker = new BatteryTracker(new BatteryIOReal());
         }
         case DEV -> {
           drive =
@@ -207,7 +203,7 @@ public class RobotContainer {
               new Vision(
                   drive::addVisionMeasurement,
                   new VisionIOPhotonVision(camera0Name, robotToCamera0));
-          batteryTracker = new BatteryTracker(new BatteryIOReal());
+          // batteryTracker = new BatteryTracker(new BatteryIOReal());
         }
         case SIM -> {
           drive =
@@ -224,7 +220,7 @@ public class RobotContainer {
                   drive::addVisionMeasurement,
                   new VisionIOPhotonVisionSim(camera0Name, robotToCamera0, drive::getPose),
                   new VisionIOPhotonVisionSim(camera1Name, robotToCamera1, drive::getPose));
-          batteryTracker = new BatteryTracker(new BatteryIO() {});
+          // batteryTracker = new BatteryTracker(new BatteryIO() {});
         }
       }
     }
@@ -255,8 +251,8 @@ public class RobotContainer {
     drive.setDefaultCommand(
         DriveCommands.joystickDrive(
             drive,
-            () -> -TBC.getLeftY() - secondary.getLeftY(),
-            () -> -TBC.getLeftX() - secondary.getLeftX(),
+            () -> -TBC.getLeftY() * speedMultiplier.getAsDouble() - secondary.getLeftY(),
+            () -> -TBC.getLeftX() * speedMultiplier.getAsDouble() - secondary.getLeftX(),
             () -> -TBC.getRightX() - secondary.getRightX()));
 
     if (drive != null) {
@@ -330,7 +326,8 @@ public class RobotContainer {
 
     TBC.x().onTrue(hood.zeroCommand().alongWith(turret.zeroCommand()));
 
-    TBC.b().whileTrue(joystickFaceCommand(() -> AllianceFlipUtil.apply(FieldConstants.Hub.hubCenter)));
+    TBC.b()
+        .whileTrue(joystickFaceCommand(() -> AllianceFlipUtil.apply(FieldConstants.Hub.hubCenter)));
 
     TBC.leftTrigger()
         .onTrue(
@@ -479,9 +476,9 @@ public class RobotContainer {
     secondaryDisconnected.set(!DriverStation.isJoystickConnected(secondary.getHID().getPort()));
   }
 
-  public void updateBatteryTelemetry() {
-    batteryTracker.periodic();
-  }
+  // public void updateBatteryTelemetry() {
+  //   batteryTracker.periodic();
+  // }
 
   public Optional<Pose2d> getFirstAutoPose() {
     var autoCommandName = getAutonomousCommand().getName();
