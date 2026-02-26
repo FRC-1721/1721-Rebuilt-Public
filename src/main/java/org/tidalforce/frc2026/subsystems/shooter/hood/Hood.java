@@ -51,8 +51,8 @@ import org.tidalforce.frc2026.util.LoggedTracer;
 import org.tidalforce.frc2026.util.LoggedTunableNumber;
 
 public class Hood extends FullSubsystem {
-  private static final double minAngle = Units.degreesToRadians(19);
-  private static final double maxAngle = Units.degreesToRadians(51);
+  public static final double minAngle = Units.degreesToRadians(10);
+  public static final double maxAngle = Units.degreesToRadians(38);
 
   private static final LoggedTunableNumber kP = new LoggedTunableNumber("Hood/kP");
   private static final LoggedTunableNumber kD = new LoggedTunableNumber("Hood/kD");

@@ -149,4 +149,12 @@ public class LEDsConstants {
           .withSlot(CANDLE_LEDS.animationSlot)
           .withFrameRate(10)
           .withColor(new RGBWColor(Color.kRed));
+
+  public static final ControlRequest frontFlash =
+      new StrobeAnimation(FRONT_STRIP.startIndex, FRONT_STRIP.endIndex)
+          .withSlot(FRONT_STRIP.animationSlot)
+          .withFrameRate(10)
+          .withColor(new RGBWColor(Color.kRed));
+  
+  public static final List<ControlRequest> flashAnimation = List.of(candleFlash, frontFlash);
 }

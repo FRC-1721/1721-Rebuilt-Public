@@ -25,6 +25,9 @@
 
 package org.tidalforce.frc2026.subsystems.shooter;
 
+import static org.tidalforce.frc2026.subsystems.shooter.LauncherConstants.*;
+
+import edu.wpi.first.math.MathUtil;
 import edu.wpi.first.math.filter.LinearFilter;
 import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.math.geometry.Rotation2d;
@@ -33,180 +36,392 @@ import edu.wpi.first.math.geometry.Twist2d;
 import edu.wpi.first.math.interpolation.InterpolatingDoubleTreeMap;
 import edu.wpi.first.math.interpolation.InterpolatingTreeMap;
 import edu.wpi.first.math.interpolation.InverseInterpolator;
+import edu.wpi.first.math.kinematics.ChassisSpeeds;
+import edu.wpi.first.math.util.Units;
+import lombok.Getter;
 import lombok.experimental.ExtensionMethod;
 import org.littletonrobotics.junction.Logger;
 import org.tidalforce.frc2026.Constants;
 import org.tidalforce.frc2026.FieldConstants;
 import org.tidalforce.frc2026.RobotState;
+import org.tidalforce.frc2026.subsystems.drive.DriveConstants;
+import org.tidalforce.frc2026.subsystems.shooter.hood.Hood;
+import org.tidalforce.frc2026.util.LoggedTunableNumber;
 import org.tidalforce.frc2026.util.geometry.AllianceFlipUtil;
+import org.tidalforce.frc2026.util.geometry.Bounds;
 import org.tidalforce.frc2026.util.geometry.GeomUtil;
 
 @ExtensionMethod({GeomUtil.class})
 public class LaunchCalculator {
   private static LaunchCalculator instance;
 
+  @Getter private double hoodAngleOffsetDeg = 0.0;
+
   private final LinearFilter hoodAngleFilter =
-      LinearFilter.movingAverage((int) (0.1 / Constants.loopPeriodSecs));
+      LinearFilter.movingAverage((int) (0.4 / Constants.loopPeriodSecs));
+  private final LinearFilter driveAngleFilter =
+      LinearFilter.movingAverage((int) (1.5 / Constants.loopPeriodSecs));
 
   private double lastHoodAngle;
-  private double hoodAngle;
-  private double hoodVelocity;
-
-  private static final double phaseDelay = 0.03; // seconds to account for processing delay
-  private static final double minDistance = 1.34; // meters
-  private static final double maxDistance = 5.60; // meters
-
-  private static final InterpolatingTreeMap<Double, Rotation2d> hoodAngleMap =
-      new InterpolatingTreeMap<Double, Rotation2d>(
-          InverseInterpolator.forDouble(), Rotation2d::interpolate);
-  private static final InterpolatingDoubleTreeMap flywheelSpeedMap =
-      new InterpolatingDoubleTreeMap();
-  private static final InterpolatingDoubleTreeMap timeOfFlightMap =
-      new InterpolatingDoubleTreeMap();
-
-  static {
-    // Hood angles (meters → radians)
-    hoodAngleMap.put(1.34, Rotation2d.fromDegrees(19.0));
-    hoodAngleMap.put(1.78, Rotation2d.fromDegrees(19.0));
-    hoodAngleMap.put(2.17, Rotation2d.fromDegrees(24.0));
-    hoodAngleMap.put(2.81, Rotation2d.fromDegrees(27.0));
-    hoodAngleMap.put(3.82, Rotation2d.fromDegrees(29.0));
-    hoodAngleMap.put(4.09, Rotation2d.fromDegrees(30.0));
-    hoodAngleMap.put(4.40, Rotation2d.fromDegrees(31.0));
-    hoodAngleMap.put(4.77, Rotation2d.fromDegrees(32.0));
-    hoodAngleMap.put(5.57, Rotation2d.fromDegrees(32.0));
-    hoodAngleMap.put(5.60, Rotation2d.fromDegrees(35.0));
-
-    // Flywheel speeds (meters → RPM)
-    flywheelSpeedMap.put(1.34, 210.0);
-    flywheelSpeedMap.put(1.78, 220.0);
-    flywheelSpeedMap.put(2.17, 220.0);
-    flywheelSpeedMap.put(2.81, 230.0);
-    flywheelSpeedMap.put(3.82, 250.0);
-    flywheelSpeedMap.put(4.09, 255.0);
-    flywheelSpeedMap.put(4.40, 260.0);
-    flywheelSpeedMap.put(4.77, 265.0);
-    flywheelSpeedMap.put(5.57, 275.0);
-    flywheelSpeedMap.put(5.60, 290.0);
-
-    // Time-of-flight (meters → seconds)
-    timeOfFlightMap.put(1.38, 0.90);
-    timeOfFlightMap.put(1.88, 1.09);
-    timeOfFlightMap.put(3.15, 1.11);
-    timeOfFlightMap.put(4.55, 1.12);
-    timeOfFlightMap.put(5.68, 1.16);
-  }
+  private Rotation2d lastDriveAngle;
 
   public static LaunchCalculator getInstance() {
     if (instance == null) instance = new LaunchCalculator();
     return instance;
   }
 
-  public record ShootingParameters(
-      boolean isValid, Rotation2d hoodAngle, double hoodVelocity, double flywheelSpeed) {}
+  public record LaunchingParameters(
+      boolean isValid,
+      Rotation2d driveAngle,
+      double driveVelocity,
+      double hoodAngle,
+      double hoodVelocity,
+      double flywheelSpeed,
+      double flywheelIdleSpeed,
+      double distance,
+      double distanceNoLookahead,
+      double timeOfFlight,
+      boolean passing) {}
 
-  private ShootingParameters latestParameters;
+  private static final double minDistance;
+  private static final double maxDistance;
+  private static final double passingMinDistance;
+  private static final double passingMaxDistance;
+  private static final double phaseDelay;
 
-  /** Calculates the shooting parameters for a fixed shooter with robot motion compensation. */
-  public ShootingParameters getParameters() {
-    if (latestParameters != null) return latestParameters;
+  // Launching Maps
+  private static final InterpolatingTreeMap<Double, Rotation2d> hoodAngleMap =
+      new InterpolatingTreeMap<>(InverseInterpolator.forDouble(), Rotation2d::interpolate);
+  private static final InterpolatingDoubleTreeMap flywheelSpeedMap =
+      new InterpolatingDoubleTreeMap();
+  private static final InterpolatingDoubleTreeMap timeOfFlightMap =
+      new InterpolatingDoubleTreeMap();
 
-    Pose2d robotPose = RobotState.getInstance().getEstimatedPose();
-    Translation2d target =
-        AllianceFlipUtil.apply(FieldConstants.Hub.topCenterPoint.toTranslation2d());
+  // Passing Maps
+  private static final InterpolatingTreeMap<Double, Rotation2d> passingHoodAngleMap =
+      new InterpolatingTreeMap<>(InverseInterpolator.forDouble(), Rotation2d::interpolate);
+  private static final InterpolatingDoubleTreeMap passingFlywheelSpeedMap =
+      new InterpolatingDoubleTreeMap();
+  private static final InterpolatingDoubleTreeMap passingTimeOfFlightMap =
+      new InterpolatingDoubleTreeMap();
 
-    // Robot velocity in field frame
-    var fieldVelocity = RobotState.getInstance().getFieldVelocity();
+  // Presets
+  public static final double hubPresetDistance = 0.96;
+  public static final double towerPresetDistance = 2.5;
+  public static final double trenchPresetDistance = 3.03;
+  public static final double outpostPresetDistance = 4.84;
+  public static final LaunchPreset hubPreset;
+  public static final LaunchPreset towerPreset;
+  public static final LaunchPreset trenchPreset;
+  public static final LaunchPreset outpostPreset;
+  public static final LaunchPreset hoodMinPreset =
+      new LaunchPreset(
+          new LoggedTunableNumber(
+              "LaunchCalculator/Presets/HoodMin/HoodAngle", Units.radiansToDegrees(Hood.minAngle)),
+          new LoggedTunableNumber("LaunchCalculator/Presets/HoodMin/FlywheelSpeed", 50));
+  public static final LaunchPreset hoodMaxPreset =
+      new LaunchPreset(
+          new LoggedTunableNumber(
+              "LaunchCalculator/Presets/HoodMax/HoodAngle", Units.radiansToDegrees(Hood.maxAngle)),
+          new LoggedTunableNumber("LaunchCalculator/Presets/HoodMax/FlywheelSpeed", 50));
 
-    // Phase delay compensation
-    Pose2d estimatedPose =
-        robotPose.exp(
+  private static final LoggedTunableNumber maxIdleSpeed =
+      new LoggedTunableNumber("LaunchCalculator/MaxIdleSpeed", 200);
+
+  public static record LaunchPreset(
+      LoggedTunableNumber hoodAngleDeg, LoggedTunableNumber flywheelSpeed) {}
+
+  // Passing targets
+  private static final double hubPassLine =
+      FieldConstants.LinesHorizontal.rightBumpStart - DriveConstants.trackWidthY / 2.0;
+  private static final double xPassTarget = Units.inchesToMeters(25);
+  private static final double yPassTarget = Units.inchesToMeters(50);
+  // Boxes of bad
+  // Under tower
+  private static final Bounds towerBound =
+      new Bounds(0, Units.inchesToMeters(46), Units.inchesToMeters(129), Units.inchesToMeters(168));
+
+  // Behind the hubs
+  private static final Bounds nearHubBound =
+      new Bounds(
+          FieldConstants.LinesVertical.neutralZoneNear,
+          FieldConstants.LinesVertical.neutralZoneNear + Units.inchesToMeters(65),
+          FieldConstants.LinesHorizontal.rightBumpStart,
+          FieldConstants.LinesHorizontal.leftBumpEnd);
+  private static final Bounds farHubBound =
+      new Bounds(
+          FieldConstants.LinesVertical.oppAllianceZone,
+          FieldConstants.fieldLength,
+          FieldConstants.LinesHorizontal.rightBumpStart,
+          FieldConstants.LinesHorizontal.leftBumpEnd);
+
+  static {
+    minDistance = 0.9;
+    maxDistance = 4.9;
+    passingMinDistance = 0.0;
+    passingMaxDistance = 12.0;
+    phaseDelay = 0.03;
+
+    hoodAngleMap.put(0.96, Rotation2d.fromDegrees(10.0));
+    hoodAngleMap.put(1.16, Rotation2d.fromDegrees(12.0));
+    hoodAngleMap.put(1.58, Rotation2d.fromDegrees(14.0));
+    hoodAngleMap.put(2.07, Rotation2d.fromDegrees(18.5));
+    hoodAngleMap.put(2.37, Rotation2d.fromDegrees(22.0));
+    hoodAngleMap.put(2.47, Rotation2d.fromDegrees(23.0));
+    hoodAngleMap.put(2.70, Rotation2d.fromDegrees(24.0));
+    hoodAngleMap.put(2.94, Rotation2d.fromDegrees(25.0));
+    hoodAngleMap.put(3.48, Rotation2d.fromDegrees(27.0));
+    hoodAngleMap.put(3.92, Rotation2d.fromDegrees(32.0));
+    hoodAngleMap.put(4.35, Rotation2d.fromDegrees(34.0));
+    hoodAngleMap.put(4.84, Rotation2d.fromDegrees(38.0));
+
+    flywheelSpeedMap.put(0.96, 150.0);
+    flywheelSpeedMap.put(1.16, 155.0);
+    flywheelSpeedMap.put(1.58, 160.0);
+    flywheelSpeedMap.put(2.07, 165.0);
+    flywheelSpeedMap.put(2.37, 170.0);
+    flywheelSpeedMap.put(2.47, 170.0);
+    flywheelSpeedMap.put(2.70, 170.0);
+    flywheelSpeedMap.put(2.94, 175.0);
+    flywheelSpeedMap.put(3.48, 175.0);
+    flywheelSpeedMap.put(3.92, 180.0);
+    flywheelSpeedMap.put(4.35, 185.0);
+    flywheelSpeedMap.put(4.84, 190.0);
+
+    timeOfFlightMap.put(5.68, 1.16);
+    timeOfFlightMap.put(4.55, 1.12);
+    timeOfFlightMap.put(3.15, 1.11);
+    timeOfFlightMap.put(1.88, 1.09);
+    timeOfFlightMap.put(1.38, 0.90);
+
+    passingHoodAngleMap.put(5.46, Rotation2d.fromDegrees(38.0));
+    passingHoodAngleMap.put(6.62, Rotation2d.fromDegrees(38.0));
+    passingHoodAngleMap.put(7.80, Rotation2d.fromDegrees(38.0));
+
+    passingFlywheelSpeedMap.put(5.46, 160.0);
+    passingFlywheelSpeedMap.put(6.62, 180.0);
+    passingFlywheelSpeedMap.put(7.80, 200.0);
+
+    passingTimeOfFlightMap.put(passingMinDistance, 0.0);
+    passingTimeOfFlightMap.put(passingMaxDistance, 0.0);
+
+    hubPreset =
+        new LaunchPreset(
+            new LoggedTunableNumber(
+                "LaunchCalculator/Presets/Hub/HoodAngle",
+                hoodAngleMap.get(hubPresetDistance).getDegrees()),
+            new LoggedTunableNumber(
+                "LaunchCalculator/Presets/Hub/FlywheelSpeed",
+                flywheelSpeedMap.get(hubPresetDistance)));
+    towerPreset =
+        new LaunchPreset(
+            new LoggedTunableNumber(
+                "LaunchCalculator/Presets/Tower/HoodAngle",
+                hoodAngleMap.get(towerPresetDistance).getDegrees()),
+            new LoggedTunableNumber(
+                "LaunchCalculator/Presets/Tower/FlywheelSpeed",
+                flywheelSpeedMap.get(towerPresetDistance)));
+    trenchPreset =
+        new LaunchPreset(
+            new LoggedTunableNumber(
+                "LaunchCalculator/Presets/Trench/HoodAngle",
+                hoodAngleMap.get(trenchPresetDistance).getDegrees()),
+            new LoggedTunableNumber(
+                "LaunchCalculator/Presets/Trench/FlywheelSpeed",
+                flywheelSpeedMap.get(trenchPresetDistance)));
+    outpostPreset =
+        new LaunchPreset(
+            new LoggedTunableNumber(
+                "LaunchCalculator/Presets/Outpost/HoodAngle",
+                hoodAngleMap.get(outpostPresetDistance).getDegrees()),
+            new LoggedTunableNumber(
+                "LaunchCalculator/Presets/Outpost/FlywheelSpeed",
+                flywheelSpeedMap.get(outpostPresetDistance)));
+  }
+
+  public static double getMinTimeOfFlight() {
+    return timeOfFlightMap.get(minDistance);
+  }
+
+  public static double getMaxTimeOfFlight() {
+    return timeOfFlightMap.get(maxDistance);
+  }
+
+  public LaunchingParameters getParameters() {
+    boolean passing =
+        AllianceFlipUtil.applyX(RobotState.getInstance().getEstimatedPose().getX())
+            > FieldConstants.LinesVertical.hubCenter;
+
+    // Calculate estimated pose while accounting for phase delay
+    Pose2d estimatedPose = RobotState.getInstance().getEstimatedPose();
+    ChassisSpeeds robotRelativeVelocity = RobotState.getInstance().getRobotVelocity();
+    estimatedPose =
+        estimatedPose.exp(
             new Twist2d(
-                fieldVelocity.vxMetersPerSecond * phaseDelay,
-                fieldVelocity.vyMetersPerSecond * phaseDelay,
-                0.0)); // no rotation for fixed shooter
+                robotRelativeVelocity.vxMetersPerSecond * phaseDelay,
+                robotRelativeVelocity.vyMetersPerSecond * phaseDelay,
+                robotRelativeVelocity.omegaRadiansPerSecond * phaseDelay));
 
-    // Distance to target
-    double distance = target.getDistance(estimatedPose.getTranslation());
+    // Calculate target
+    Translation2d target =
+        passing
+            ? getPassingTarget()
+            : AllianceFlipUtil.apply(FieldConstants.Hub.topCenterPoint.toTranslation2d());
+    Pose2d launcherPosition = estimatedPose.transformBy(robotToLauncher.toTransform2d());
+    double launcherToTargetDistance = target.getDistance(launcherPosition.getTranslation());
 
-    // Lookahead accounting for robot velocity
-    Pose2d lookaheadPose = estimatedPose;
-    double lookaheadDistance = distance;
+    // Calculate field relative launcher velocity
+    var robotVelocity = RobotState.getInstance().getFieldSetpointVelocity();
+    var robotAngle = RobotState.getInstance().getRotation();
+    ChassisSpeeds launcherVelocity =
+        GeomUtil.transformVelocity(
+            robotVelocity, robotToLauncher.getTranslation().toTranslation2d(), robotAngle);
+
+    // Account for imparted velocity by robot (launcher) to offset
+    double timeOfFlight =
+        passing
+            ? passingTimeOfFlightMap.get(launcherToTargetDistance)
+            : timeOfFlightMap.get(launcherToTargetDistance);
+    Pose2d lookaheadPose = launcherPosition;
+    double lookaheadLauncherToTargetDistance = launcherToTargetDistance;
+
     for (int i = 0; i < 20; i++) {
-      double tof = timeOfFlightMap.get(lookaheadDistance);
-      Translation2d offset =
-          new Translation2d(
-              fieldVelocity.vxMetersPerSecond * tof, fieldVelocity.vyMetersPerSecond * tof);
+      timeOfFlight =
+          passing
+              ? passingTimeOfFlightMap.get(lookaheadLauncherToTargetDistance)
+              : timeOfFlightMap.get(lookaheadLauncherToTargetDistance);
+      double offsetX = launcherVelocity.vxMetersPerSecond * timeOfFlight;
+      double offsetY = launcherVelocity.vyMetersPerSecond * timeOfFlight;
       lookaheadPose =
-          new Pose2d(estimatedPose.getTranslation().plus(offset), estimatedPose.getRotation());
-      lookaheadDistance = target.getDistance(lookaheadPose.getTranslation());
+          new Pose2d(
+              launcherPosition.getTranslation().plus(new Translation2d(offsetX, offsetY)),
+              launcherPosition.getRotation());
+      lookaheadLauncherToTargetDistance = target.getDistance(lookaheadPose.getTranslation());
     }
 
-    // Hood angle
-    hoodAngle = hoodAngleMap.get(lookaheadDistance).getRadians();
-    if (Double.isNaN(lastHoodAngle)) lastHoodAngle = hoodAngle;
+    // Account for launcher being off center
+    Pose2d lookaheadRobotPose =
+        lookaheadPose.transformBy(robotToLauncher.toTransform2d().inverse());
+    Rotation2d driveAngle = getDriveAngleWithLauncherOffset(lookaheadRobotPose, target);
 
-    hoodVelocity =
+    // Calculate remaining parameters
+    double hoodAngle =
+        passing
+            ? passingHoodAngleMap.get(lookaheadLauncherToTargetDistance).getRadians()
+            : hoodAngleMap.get(lookaheadLauncherToTargetDistance).getRadians();
+    if (lastDriveAngle == null) lastDriveAngle = driveAngle;
+    if (Double.isNaN(lastHoodAngle)) lastHoodAngle = hoodAngle;
+    double hoodVelocity =
         hoodAngleFilter.calculate((hoodAngle - lastHoodAngle) / Constants.loopPeriodSecs);
     lastHoodAngle = hoodAngle;
+    double driveVelocity =
+        driveAngleFilter.calculate(
+            driveAngle.minus(lastDriveAngle).getRadians() / Constants.loopPeriodSecs);
+    lastDriveAngle = driveAngle;
 
-    double flywheel = flywheelSpeedMap.get(lookaheadDistance);
+    // Check if inside a box of bad
+    var flippedPose = AllianceFlipUtil.apply(estimatedPose);
+    boolean insideTowerBadBox = towerBound.contains(flippedPose.getTranslation());
+    boolean behindNearHub = nearHubBound.contains(flippedPose.getTranslation());
+    boolean behindFarHub = farHubBound.contains(flippedPose.getTranslation());
+    boolean outsideOfBadBoxes = !(insideTowerBadBox || behindNearHub || behindFarHub);
 
-    latestParameters =
-        new ShootingParameters(
-            lookaheadDistance >= minDistance && lookaheadDistance <= maxDistance,
-            new Rotation2d(hoodAngle),
-            hoodVelocity,
-            flywheel);
+    double flywheelVelocity =
+        passing
+            ? passingFlywheelSpeedMap.get(lookaheadLauncherToTargetDistance)
+            : flywheelSpeedMap.get(lookaheadLauncherToTargetDistance);
 
-    // Logging
-    Logger.recordOutput("LaunchCalculator/LookaheadPose", lookaheadPose);
-    Logger.recordOutput("LaunchCalculator/RobotPose", robotPose.toString());
-    Logger.recordOutput("LaunchCalculator/Distance", lookaheadDistance);
-    Logger.recordOutput("LaunchCalculator/HoodAngle", hoodAngle);
-    Logger.recordOutput("LaunchCalculator/FlywheelSpeed", flywheel);
+    // Log calculated values
+    Logger.recordOutput("LaunchCalculator/TargetPose", new Pose2d(target, Rotation2d.kZero));
+    Logger.recordOutput("LaunchCalculator/LookaheadPose", lookaheadRobotPose);
+    Logger.recordOutput(
+        "LaunchCalculator/LauncherToTargetDistance", lookaheadLauncherToTargetDistance);
 
-    return latestParameters;
+    // Constructor parameters
+    return new LaunchingParameters(
+        outsideOfBadBoxes
+            && lookaheadLauncherToTargetDistance >= (passing ? passingMinDistance : minDistance)
+            && lookaheadLauncherToTargetDistance <= (passing ? passingMaxDistance : maxDistance),
+        driveAngle,
+        driveVelocity,
+        hoodAngle + Units.degreesToRadians(hoodAngleOffsetDeg),
+        hoodVelocity,
+        flywheelVelocity,
+        MathUtil.clamp(flywheelVelocity, 0, maxIdleSpeed.get()),
+        lookaheadLauncherToTargetDistance,
+        launcherToTargetDistance,
+        timeOfFlight,
+        passing);
   }
 
-  /** Returns a Pose2d pointing from the robot to the hub, with velocity compensation */
-  public Pose2d getFaceHerePose() {
-    Pose2d robotPose = RobotState.getInstance().getEstimatedPose();
-    Translation2d target =
-        AllianceFlipUtil.apply(FieldConstants.Hub.topCenterPoint.toTranslation2d());
+  private static Rotation2d getDriveAngleWithLauncherOffset(
+      Pose2d robotPose, Translation2d target) {
+    Rotation2d fieldToHubAngle = target.minus(robotPose.getTranslation()).getAngle();
+    Rotation2d hubAngle =
+        new Rotation2d(
+            Math.asin(
+                MathUtil.clamp(
+                    robotToLauncher.getTranslation().getY()
+                        / target.getDistance(robotPose.getTranslation()),
+                    -1.0,
+                    1.0)));
+    Rotation2d driveAngle =
+        fieldToHubAngle.plus(hubAngle).plus(robotToLauncher.getRotation().toRotation2d());
+    return driveAngle;
+  }
 
-    // Robot velocity compensation
-    var fieldVelocity = RobotState.getInstance().getFieldVelocity();
+  public double getNaiveTOF(double distance) {
+    return timeOfFlightMap.get(distance);
+  }
 
-    // Phase delay
-    Pose2d estimatedPose =
-        robotPose.exp(
-            new Twist2d(
-                fieldVelocity.vxMetersPerSecond * phaseDelay,
-                fieldVelocity.vyMetersPerSecond * phaseDelay,
-                0.0 // no rotation for fixed shooter
-                ));
+  public Translation2d getPassingTarget() {
+    double flippedY = AllianceFlipUtil.apply(RobotState.getInstance().getEstimatedPose()).getY();
+    boolean mirror = flippedY > FieldConstants.LinesHorizontal.center;
 
-    // Lookahead to account for robot motion
-    Pose2d lookaheadPose = estimatedPose;
-    double distance = target.getDistance(estimatedPose.getTranslation());
-    for (int i = 0; i < 20; i++) {
-      double tof = timeOfFlightMap.get(distance);
-      Translation2d offset =
-          new Translation2d(
-              fieldVelocity.vxMetersPerSecond * tof, fieldVelocity.vyMetersPerSecond * tof);
-      lookaheadPose =
-          new Pose2d(estimatedPose.getTranslation().plus(offset), estimatedPose.getRotation());
-      distance = target.getDistance(lookaheadPose.getTranslation());
+    // Check if we need to interpolate
+    if (FieldConstants.fieldWidth - hubPassLine > flippedY && flippedY > hubPassLine) {
+      double interpolateZoneAmount =
+          ((mirror ? FieldConstants.fieldWidth - flippedY : flippedY) - hubPassLine)
+              / (FieldConstants.LinesHorizontal.center - hubPassLine);
+      var unflippedPoseY =
+          mirror
+              ? FieldConstants.fieldWidth
+                  - MathUtil.interpolate(yPassTarget, passingMinDistance, interpolateZoneAmount)
+              : MathUtil.interpolate(yPassTarget, passingMinDistance, interpolateZoneAmount);
+      Translation2d flippedGoalTranslation =
+          AllianceFlipUtil.apply(new Translation2d(xPassTarget, unflippedPoseY));
+      return flippedGoalTranslation;
     }
 
-    // Return Pose2d pointing from robot to hub
-    Rotation2d facing = target.minus(lookaheadPose.getTranslation()).getAngle();
-    return new Pose2d(lookaheadPose.getX(), lookaheadPose.getY(), facing);
+    // Fixed passing target
+    Translation2d flippedGoalTranslation =
+        AllianceFlipUtil.apply(
+            new Translation2d(
+                xPassTarget, mirror ? FieldConstants.fieldWidth - yPassTarget : yPassTarget));
+
+    return flippedGoalTranslation;
   }
 
-  /** Clears cached parameters for next loop. */
-  public void clearParameters() {
-    latestParameters = null;
+  /**
+   * Returns the Pose2d that correctly aims the robot at the goal for a given robot translation.
+   *
+   * @param robotTranslation The translation of the center of the robot.
+   * @param forceBlue Always use the blue hub target
+   * @return The target pose for the aimed robot.
+   */
+  public static Pose2d getStationaryAimedPose(Translation2d robotTranslation, boolean forceBlue) {
+    // Calculate target
+    Translation2d target = FieldConstants.Hub.topCenterPoint.toTranslation2d();
+    if (!forceBlue) {
+      target = AllianceFlipUtil.apply(target);
+    }
+
+    return new Pose2d(
+        robotTranslation, getDriveAngleWithLauncherOffset(robotTranslation.toPose2d(), target));
+  }
+
+  /** Adjusts the hood angle offset up or down the specified amount. */
+  public void incrementHoodAngleOffset(double incrementDegrees) {
+    hoodAngleOffsetDeg += incrementDegrees;
   }
 }

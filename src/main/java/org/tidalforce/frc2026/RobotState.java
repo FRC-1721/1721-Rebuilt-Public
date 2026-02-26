@@ -61,6 +61,8 @@ public class RobotState {
   private final TimeInterpolatableBuffer<Rotation2d> turretAngleBuffer =
       TimeInterpolatableBuffer.createBuffer(turretAngleBufferSizeSec);
   private final Matrix<N3, N1> qStdDevs = new Matrix<>(Nat.N3(), Nat.N1());
+  private final TimeInterpolatableBuffer<Rotation3d> rotationBuffer =
+      TimeInterpolatableBuffer.createBuffer(poseBufferSizeSec);
 
   // Odometry fields
   private final SwerveDriveKinematics kinematics;
@@ -74,6 +76,8 @@ public class RobotState {
   private Rotation2d gyroOffset = Rotation2d.kZero;
 
   @Getter @Setter private ChassisSpeeds robotVelocity = new ChassisSpeeds();
+
+  @Getter @Setter private ChassisSpeeds robotSetpointVelocity = new ChassisSpeeds();
 
   // MARK: - Initialization
 
@@ -112,9 +116,31 @@ public class RobotState {
     return ChassisSpeeds.fromRobotRelativeSpeeds(robotVelocity, getRotation());
   }
 
+  public ChassisSpeeds getFieldSetpointVelocity() {
+    return ChassisSpeeds.fromRobotRelativeSpeeds(robotSetpointVelocity, getRotation());
+  }
+
   @AutoLogOutput
   public Optional<Rotation2d> getTurretAngle(double timestamp) {
     return turretAngleBuffer.getSample(timestamp);
+  }
+
+  public Optional<Pose2d> getEstimatedPoseAtTimestamp(double timestamp) {
+    var oldOdometryPose = poseBuffer.getSample(timestamp);
+    if (oldOdometryPose.isEmpty()) {
+      return Optional.empty();
+    }
+    return Optional.of(
+        RobotState.getInstance()
+            .getEstimatedPose()
+            .transformBy(
+                new Transform2d(
+                    RobotState.getInstance().getOdometryPose(), oldOdometryPose.get())));
+  }
+
+  public Optional<Rotation3d> getEstimatedRotation3dAtTimestamp(double timestamp) {
+    var estimatedRotation = rotationBuffer.getSample(timestamp);
+    return estimatedRotation;
   }
 
   /** Adds a new odometry sample from the drive subsystem. */
