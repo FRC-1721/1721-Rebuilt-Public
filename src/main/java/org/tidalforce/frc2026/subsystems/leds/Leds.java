@@ -55,4 +55,11 @@ public class LEDs extends SubsystemBase {
             () -> lights.setAnimations(LEDsConstants.offAnimation))
         .withName("Auto Animation");
   }
+
+  public Command runFlashAnimation() {
+    return this.startEnd(
+      () -> lights.setAnimations(LEDsConstants.flashAnimation), 
+      () -> lights.setAnimations(LEDsConstants.offAnimation))
+      .withName("Flash Animation");
+  }
 }

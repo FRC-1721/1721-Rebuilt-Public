@@ -30,6 +30,10 @@ import edu.wpi.first.math.MathShared;
 import edu.wpi.first.math.MathSharedStore;
 import edu.wpi.first.math.MathUsageId;
 import edu.wpi.first.math.geometry.Pose2d;
+import edu.wpi.first.math.geometry.Translation3d;
+import edu.wpi.first.math.util.Units;
+import edu.wpi.first.networktables.NetworkTableInstance;
+import edu.wpi.first.networktables.StructArrayPublisher;
 import edu.wpi.first.wpilibj.Alert;
 import edu.wpi.first.wpilibj.Alert.AlertType;
 import edu.wpi.first.wpilibj.DriverStation;
@@ -57,6 +61,7 @@ import org.littletonrobotics.junction.wpilog.WPILOGWriter;
 import org.tidalforce.frc2026.Constants.Mode;
 import org.tidalforce.frc2026.Constants.RobotType;
 import org.tidalforce.frc2026.subsystems.shooter.ShotCalculator;
+import org.tidalforce.frc2026.util.FuelSim;
 import org.tidalforce.frc2026.util.FullSubsystem;
 import org.tidalforce.frc2026.util.LoggedTracer;
 import org.tidalforce.frc2026.util.VirtualSubsystem;
@@ -69,6 +74,8 @@ public class Robot extends LoggedRobot {
   private double autoStart;
   private boolean autoMessagePrinted;
   private RobotContainer robotContainer;
+  private FuelSim fuelSim;
+  private StructArrayPublisher<Translation3d> fuelPublisher;
 
   private final Timer disabledTimer = new Timer();
   private final Alert lowBatteryAlert =
@@ -119,15 +126,16 @@ public class Robot extends LoggedRobot {
 
       case REPLAY:
         // Replaying a log, set up replay source
-        String inPath = LogFileUtil.findReplayLog();
-        String outPath = LogFileUtil.addPathSuffix(inPath, "_sim");
-        Logger.setReplaySource(new WPILOGReader(inPath));
-        Logger.addDataReceiver(new WPILOGWriter(outPath));
+        // String inPath = LogFileUtil.findReplayLog();
+        // String outPath = LogFileUtil.addPathSuffix(inPath, "_sim");
+        String logPath = LogFileUtil.findReplayLog();
+        Logger.setReplaySource(new WPILOGReader(logPath));
+        Logger.addDataReceiver(new WPILOGWriter(LogFileUtil.addPathSuffix(logPath, "_sim")));
         break;
     }
 
     // Set timing mode
-    setUseTiming(Constants.getMode() != Mode.REPLAY);
+    setUseTiming(false);
 
     // Start AdvantageKit logger
     Logger.start();
@@ -217,6 +225,7 @@ public class Robot extends LoggedRobot {
     // LoggedTracer.record("PeriodicAfterScheduler");
     // robotContainer.updateBatteryTelemetry();
     CommandScheduler.getInstance().run();
+    robotContainer.updateFuelCamera();
 
     // Print auto duration
     if (autonomousCommand != null) {
@@ -302,7 +311,25 @@ public class Robot extends LoggedRobot {
 
   /** This function is called once when the robot is first started up. */
   @Override
-  public void simulationInit() {}
+  public void simulationInit() {
+    fuelSim = new FuelSim();
+
+    fuelSim.spawnStartingFuel();
+    fuelSim.start();
+    fuelSim.registerRobot(
+        Units.inchesToMeters(26), // robot width
+        Units.inchesToMeters(26), // robot length
+        Units.inchesToMeters(22), // bumper height
+        () -> robotContainer.drive.getPose(),
+        () -> robotContainer.drive.getChassisSpeeds());
+
+    ObjectDetection.setFuelSim(fuelSim);
+
+    fuelPublisher =
+        NetworkTableInstance.getDefault()
+            .getStructArrayTopic("FuelSim/Fuels", Translation3d.struct)
+            .publish();
+  }
 
   /** This function is called periodically whilst in simulation. */
   @Override
@@ -312,5 +339,18 @@ public class Robot extends LoggedRobot {
     RobotState.getInstance().setRobotVelocity(robotContainer.drive.getChassisSpeeds());
 
     ShotCalculator.getInstance().clearShootingParameters();
+
+    // Update fuel physics
+    if (fuelSim != null) {
+      fuelSim.updateSim();
+
+      // Publish for AdvantageScope
+      Translation3d[] allFuel =
+          fuelSim.getFuels().stream()
+              .map(t -> new Translation3d(t.getX(), t.getY(), 0.2)) // use real Z
+              .toArray(Translation3d[]::new);
+
+      fuelPublisher.set(allFuel);
+    }
   }
 }

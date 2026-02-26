@@ -63,7 +63,7 @@ def includeDesktopSupport = true
 
 // Configuration for AdvantageKit
 task(replayWatch, type: JavaExec) {
-    mainClass = "org.tidalforce.junction.ReplayWatch"
+    mainClass = "org.littletonrobotics.junction.ReplayWatch"
     classpath = sourceSets.main.runtimeClasspath
 }
 

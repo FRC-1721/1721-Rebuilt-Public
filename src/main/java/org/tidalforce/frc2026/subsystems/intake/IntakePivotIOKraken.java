@@ -74,7 +74,7 @@ public class IntakePivotIOKraken implements IntakePivotIO {
     // make a PositionVoltage control request
     var request =
         new PositionVoltage(targetRotations)
-            .withFeedForward(appliedVoltage) // “extra” voltage to help hold or assist motion
+            .withFeedForward(appliedVoltage) // extra voltage to help hold or assist motion
             .withSlot(0); // use your PID slot
 
     motor.setControl(request);

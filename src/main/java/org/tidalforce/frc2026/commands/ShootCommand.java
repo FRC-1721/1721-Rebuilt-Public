@@ -36,7 +36,7 @@ public class ShootCommand extends SequentialCommandGroup {
 
   public ShootCommand(Flywheel flywheel, Kicker kicker, ShotCalculator shotCalculator) {
 
-    // 1️⃣ Set the flywheel goal from the shot calculator
+    // Set the flywheel goal from the shot calculator
     addCommands(
         Commands.runOnce(
             () -> {
@@ -44,14 +44,14 @@ public class ShootCommand extends SequentialCommandGroup {
               flywheel.setGoal(shot.flywheelSpeed());
             }));
 
-    // 2️⃣ Run the flywheel continuously until we feed balls
+    // Run the flywheel continuously until we feed balls
     addCommands(
         flywheel
             .runGoalCommand()
             .deadlineWith(
-                // 3️⃣ Wait until flywheel is at setpoint
+                // Wait until flywheel is at setpoint
                 new WaitUntilCommand(() -> flywheel.atGoal())
-                    // 4️⃣ Then run the kicker for a short period
+                    // Then run the kicker for a short period
                     .andThen(
                         Commands.runOnce(() -> kicker.setGoal(Kicker.Goal.SHOOT))
                             .withTimeout(0.4)
