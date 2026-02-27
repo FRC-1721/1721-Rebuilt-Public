@@ -65,7 +65,6 @@ import org.tidalforce.frc2026.subsystems.drive.ModuleIO;
 import org.tidalforce.frc2026.subsystems.drive.ModuleIOSim;
 import org.tidalforce.frc2026.subsystems.drive.ModuleIOTalonFX;
 import org.tidalforce.frc2026.subsystems.hopper.Hopper;
-import org.tidalforce.frc2026.subsystems.hopper.Hopper.Goal;
 import org.tidalforce.frc2026.subsystems.intake.Intake;
 import org.tidalforce.frc2026.subsystems.intake.IntakePivotIO;
 import org.tidalforce.frc2026.subsystems.intake.IntakePivotSubsystem;
@@ -108,6 +107,10 @@ public class RobotContainer {
   private IntakePivotSubsystem intakePivot;
   private org.photonvision.PhotonCamera fuelCamera;
 
+  
+  private final Trigger isAutonomous = new Trigger(DriverStation::isAutonomous);
+  private final Trigger isDisabled = new Trigger(DriverStation::isDisabled);
+
   private final LoggedDashboardChooser<Boolean> m_flipChooser;
 
   // Controllers
@@ -121,7 +124,6 @@ public class RobotContainer {
   private final Trigger lostAutoOverride = overrides.multiDirectionSwitch1Down();
   private final Trigger aggresivePathfinding = overrides.multiDirectionSwitch2Down();
   private final Trigger passivePathfinding = overrides.multiDirectionSwitch2Up();
-
 
   // Battery Tracker
   // private BatteryTracker batteryTracker;
@@ -276,6 +278,7 @@ public class RobotContainer {
     SmartDashboard.putData("AutoChooser", autoChooser.getSendableChooser());
 
     configureButtonBindings();
+    configureLEDTriggers();
 
     drive.setDefaultCommand(
         DriveCommands.joystickDrive(
@@ -350,6 +353,18 @@ public class RobotContainer {
         Set.of(drive));
   }
 
+  private Command shootCommand =
+    Commands.parallel(
+            Commands.startEnd(
+                () -> hopper.setGoal(Hopper.Goal.SHOOT),
+                () -> hopper.setGoal(Hopper.Goal.STOP),
+                hopper),
+            Commands.startEnd(
+                () -> kicker.setGoal(Kicker.Goal.SHOOT),
+                () -> kicker.setGoal(Kicker.Goal.STOP),
+                kicker))
+        .withName("ShootCommand");
+
   private Pose2d getFuturePose(double seconds) {
     return drive.getPose().exp(drive.getChassisSpeeds().toTwist2d(seconds));
   }
@@ -390,27 +405,14 @@ public class RobotContainer {
                 () -> intake.setGoal(Intake.Goal.STOP),
                 intake));
 
-TBC.rightTrigger()
-    .whileTrue(
-        DriveCommands.joystickDriveWhileLaunching(
-            drive,
-            () -> -TBC.getLeftY(),
-            () -> -TBC.getLeftX()));
-TBC.rightTrigger()
-    .and(() -> LaunchCalculator.getInstance().getParameters().isValid())
-    .and(inLaunchingTolerance)
-    .whileTrue(
-        Commands.parallel(
-            Commands.startEnd(
-                () -> hopper.setGoal(Hopper.Goal.SHOOT),
-                () -> hopper.setGoal(Hopper.Goal.STOP),
-                hopper),
-            Commands.startEnd(
-                () -> kicker.setGoal(Kicker.Goal.SHOOT),
-                () -> kicker.setGoal(Kicker.Goal.STOP),
-                kicker)
-        )
-    );
+    TBC.rightTrigger()
+        .whileTrue(
+            DriveCommands.joystickDriveWhileLaunching(
+                drive, () -> -TBC.getLeftY(), () -> -TBC.getLeftX()));
+    TBC.rightTrigger()
+        .and(() -> LaunchCalculator.getInstance().getParameters().isValid())
+        .and(inLaunchingTolerance)
+        .whileTrue(shootCommand);
 
     TBC.leftBumper()
         .whileTrue(
@@ -438,43 +440,26 @@ TBC.rightTrigger()
     // My magnum opus
 
     TBC.RightPaddle()
-    .whileTrue(
-        Commands.either(
-            // AGGRESSIVE
-            compPathfindTo(() ->
-                AllianceFlipUtil.apply(FieldConstants.RightTrench.rightTest)),
-
-            // If not aggressive → check middle
+        .whileTrue(
             Commands.either(
-                // MIDDLE
-                midLevelPathfindTo(() ->
-                    AllianceFlipUtil.apply(FieldConstants.RightTrench.rightTest)),
+                // AGGRESSIVE
+                compPathfindTo(() -> AllianceFlipUtil.apply(FieldConstants.RightTrench.rightTest)),
 
-                // PASSIVE (fallback)
-                slowPathfindTo(() ->
-                    AllianceFlipUtil.apply(FieldConstants.RightTrench.rightTest)),
-
-                passivePathfinding
-            ),
-
-            aggresivePathfinding
-        )
-    );
-
-    TBC.RightPaddle()
-    .whileTrue(
-      Commands.runOnce(() -> leds.runFlashAnimation())
-    );
-
-    TBC.RightPaddle()
-        .multiPress(2, 0.1)
-        .debounce(0.05)
-        .onTrue(
-            Commands.run(
-                () ->
-                    compPathfindTo(
+                // If not aggressive → check middle
+                Commands.either(
+                    // MIDDLE
+                    midLevelPathfindTo(
                         () -> AllianceFlipUtil.apply(FieldConstants.RightTrench.rightTest)),
-                drive));
+
+                    // PASSIVE (fallback)
+                    slowPathfindTo(
+                        () -> AllianceFlipUtil.apply(FieldConstants.RightTrench.rightTest)),
+                    passivePathfinding),
+                aggresivePathfinding));
+
+    TBC.RightPaddle()
+        .onTrue(leds.scheduleStateCommand(LEDs.State.PATHFINDING_AGGRESIVE))
+        .onFalse(leds.unscheduleStateCommand(LEDs.State.PATHFINDING_AGGRESIVE));
 
     TBC.y()
         .onTrue(
@@ -487,6 +472,23 @@ TBC.rightTrigger()
                                     AllianceFlipUtil.apply(Rotation2d.kZero))))
                 .ignoringDisable(true));
   }
+
+  private void configureLEDTriggers() {
+        isDisabled
+                .onTrue(leds.scheduleStateCommand(LEDs.State.DISABLED))
+                .onFalse(leds.unscheduleStateCommand(LEDs.State.DISABLED));
+        isAutonomous
+                .onTrue(leds.scheduleStateCommand(LEDs.State.RUNNING_AUTO))
+                .onFalse(leds.unscheduleStateCommand(LEDs.State.RUNNING_AUTO));
+
+        new Trigger(() -> LaunchCalculator.getInstance().getParameters().isValid())
+                .onTrue(leds.scheduleStateCommand(LEDs.State.READY_TO_SHOOT))
+                .onFalse(leds.unscheduleStateCommand(LEDs.State.READY_TO_SHOOT));
+
+        new Trigger(() -> intake.getGoal() == Intake.Goal.INTAKE)
+                .onTrue(leds.scheduleStateCommand(LEDs.State.RUNNING_INTAKE))
+                .onFalse(leds.unscheduleStateCommand(LEDs.State.RUNNING_INTAKE));
+    }
 
   private void registerNamedCommands() {
     switch (Constants.currentMode) {

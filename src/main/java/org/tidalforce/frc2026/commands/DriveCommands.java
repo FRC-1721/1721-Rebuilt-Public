@@ -70,11 +70,7 @@ public class DriveCommands {
   }
 
   public static PathConstraints midLevelPathConstraints() {
-    return new PathConstraints(
-      4, 
-      4, 
-      480, 
-      600);
+    return new PathConstraints(4, 4, 480, 600);
   }
 
   public static PathConstraints compPathConstraints() {

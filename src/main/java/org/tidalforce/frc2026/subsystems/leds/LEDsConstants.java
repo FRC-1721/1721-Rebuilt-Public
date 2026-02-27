@@ -32,6 +32,7 @@ import com.ctre.phoenix6.controls.ControlRequest;
 import com.ctre.phoenix6.controls.EmptyAnimation;
 import com.ctre.phoenix6.controls.FireAnimation;
 import com.ctre.phoenix6.controls.RainbowAnimation;
+import com.ctre.phoenix6.controls.SolidColor;
 import com.ctre.phoenix6.controls.StrobeAnimation;
 import com.ctre.phoenix6.signals.AnimationDirectionValue;
 import com.ctre.phoenix6.signals.Enable5VRailValue;
@@ -155,6 +156,30 @@ public class LEDsConstants {
           .withSlot(FRONT_STRIP.animationSlot)
           .withFrameRate(10)
           .withColor(new RGBWColor(Color.kRed));
-  
+
   public static final List<ControlRequest> flashAnimation = List.of(candleFlash, frontFlash);
+
+  // Solid Green
+  public static final ControlRequest candleSolidGreen =
+      new SolidColor(CANDLE_LEDS.startIndex, CANDLE_LEDS.endIndex)
+          .withColor(new RGBWColor(Color.kLimeGreen));
+
+  public static final ControlRequest frontSolidGreen =
+      new SolidColor(FRONT_STRIP.startIndex, FRONT_STRIP.endIndex)
+          .withColor(new RGBWColor(Color.kLimeGreen));
+
+  public static final List<ControlRequest> solidGreenAnim =
+      List.of(candleSolidGreen, frontSolidGreen);
+
+  // Solid Blue
+  public static final ControlRequest candleSolidBlue =
+      new SolidColor(CANDLE_LEDS.startIndex, CANDLE_LEDS.endIndex)
+          .withColor(new RGBWColor(Color.kLightBlue));
+
+  public static final ControlRequest frontSolidBlue =
+      new SolidColor(FRONT_STRIP.startIndex, FRONT_STRIP.endIndex)
+          .withColor(new RGBWColor(Color.kLightBlue));
+
+  public static final List<ControlRequest> solidBlueAnim =
+      List.of(candleSolidGreen, frontSolidGreen);
 }
