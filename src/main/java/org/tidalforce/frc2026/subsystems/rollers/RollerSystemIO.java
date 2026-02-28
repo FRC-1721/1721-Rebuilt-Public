@@ -39,7 +39,15 @@ public interface RollerSystemIO {
     public double tempCelsius;
   }
 
+  public enum RollerSystemIOMode {
+    BRAKE,
+    COAST,
+    VOLTAGE_CONTROL,
+    CLOSED_LOOP
+  }
+
   public static class RollerSystemIOOutputs {
+    public RollerSystemIOMode mode = RollerSystemIOMode.BRAKE;
     public double appliedVoltage = 0.0;
     public boolean brakeModeEnabled = true;
   }

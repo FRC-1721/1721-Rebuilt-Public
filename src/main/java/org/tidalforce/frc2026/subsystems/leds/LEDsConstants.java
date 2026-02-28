@@ -32,6 +32,7 @@ import com.ctre.phoenix6.controls.ControlRequest;
 import com.ctre.phoenix6.controls.EmptyAnimation;
 import com.ctre.phoenix6.controls.FireAnimation;
 import com.ctre.phoenix6.controls.RainbowAnimation;
+import com.ctre.phoenix6.controls.SingleFadeAnimation;
 import com.ctre.phoenix6.controls.SolidColor;
 import com.ctre.phoenix6.controls.StrobeAnimation;
 import com.ctre.phoenix6.signals.AnimationDirectionValue;
@@ -182,4 +183,18 @@ public class LEDsConstants {
 
   public static final List<ControlRequest> solidBlueAnim =
       List.of(candleSolidGreen, frontSolidGreen);
+
+  public static final ControlRequest candleFade =
+      new SingleFadeAnimation(CANDLE_LEDS.startIndex, CANDLE_LEDS.endIndex)
+          .withSlot(CANDLE_LEDS.animationSlot)
+          .withFrameRate(10)
+          .withColor(new RGBWColor(Color.kGold));
+
+  public static final ControlRequest frontFade =
+      new SingleFadeAnimation(CANDLE_LEDS.startIndex, CANDLE_LEDS.endIndex)
+          .withSlot(FRONT_STRIP.animationSlot)
+          .withFrameRate(10)
+          .withColor(new RGBWColor(Color.kGold));
+
+  public static final List<ControlRequest> fadeAnimation = List.of(candleFade, frontFade);
 }

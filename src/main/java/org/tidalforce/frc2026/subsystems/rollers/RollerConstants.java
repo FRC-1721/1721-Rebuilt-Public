@@ -27,7 +27,7 @@ package org.tidalforce.frc2026.subsystems.rollers;
 
 public final class RollerConstants {
   public static final int INTAKE_ID = 20;
-  public static final int HOPPER_ID = 21;
+  public static final int HOPPER_ID = 13;
   public static final int KICKER_ID = 22;
 
   public static final String CAN_BUS = "rio"; // or "canivore"

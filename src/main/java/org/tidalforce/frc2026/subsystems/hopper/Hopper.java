@@ -25,6 +25,7 @@
 
 package org.tidalforce.frc2026.subsystems.hopper;
 
+import java.util.function.BooleanSupplier;
 import lombok.Getter;
 import lombok.Setter;
 import org.littletonrobotics.junction.AutoLogOutput;
@@ -35,9 +36,9 @@ import org.tidalforce.frc2026.util.LoggedTunableNumber;
 
 public class Hopper extends FullSubsystem {
   private static final LoggedTunableNumber rollerShootVolts =
-      new LoggedTunableNumber("Hopper/Roller/ShootVolts", 12.0);
+      new LoggedTunableNumber("Hopper/Roller/ShootVolts", -12.0);
   private static final LoggedTunableNumber rollerOuttakeVolts =
-      new LoggedTunableNumber("Hopper/Roller/OuttakeVolts", -12.0);
+      new LoggedTunableNumber("Hopper/Roller/OuttakeVolts", 12.0);
 
   private final RollerSystem roller;
 
@@ -69,6 +70,10 @@ public class Hopper extends FullSubsystem {
   @Override
   public void periodicAfterScheduler() {
     roller.periodicAfterScheduler();
+  }
+
+  public void setCoastOverride(BooleanSupplier coast) {
+    roller.setCoastOverride(coast);
   }
 
   public enum Goal {

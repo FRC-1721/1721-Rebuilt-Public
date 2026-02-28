@@ -25,6 +25,7 @@
 
 package org.tidalforce.frc2026.subsystems.intake;
 
+import java.util.function.BooleanSupplier;
 import lombok.Getter;
 import lombok.Setter;
 import org.littletonrobotics.junction.AutoLogOutput;
@@ -70,6 +71,10 @@ public class Intake extends FullSubsystem {
   @Override
   public void periodicAfterScheduler() {
     roller.periodicAfterScheduler();
+  }
+
+  public void setCoastOverride(BooleanSupplier coast) {
+    roller.setCoastOverride(coast);
   }
 
   public enum Goal {

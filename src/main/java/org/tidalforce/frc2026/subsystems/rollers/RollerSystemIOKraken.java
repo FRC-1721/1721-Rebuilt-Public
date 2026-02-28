@@ -35,6 +35,7 @@ public class RollerSystemIOKraken implements RollerSystemIO {
   private final TalonFX motor;
   private final VoltageOut voltageRequest = new VoltageOut(0.0);
   private double appliedVoltage = 0.0;
+  private NeutralModeValue lastNeutralMode = null;
 
   public RollerSystemIOKraken(int motorId, String canBus) {
     motor = new TalonFX(motorId, canBus);
@@ -54,16 +55,22 @@ public class RollerSystemIOKraken implements RollerSystemIO {
   }
 
   @Override
-  public void applyOutputs(RollerSystemIOOutputs outputs) {
-    motor.setNeutralMode(
-        outputs.brakeModeEnabled ? NeutralModeValue.Brake : NeutralModeValue.Coast);
+public void applyOutputs(RollerSystemIOOutputs outputs) {
 
-    if (DriverStation.isDisabled()) {
-      appliedVoltage = 0.0;
-    } else {
-      appliedVoltage = MathUtil.clamp(outputs.appliedVoltage, -12.0, 12.0);
-    }
+  NeutralModeValue desiredMode =
+      outputs.brakeModeEnabled ? NeutralModeValue.Brake : NeutralModeValue.Coast;
 
-    motor.setControl(voltageRequest.withOutput(appliedVoltage));
+  if (desiredMode != lastNeutralMode) {
+    motor.setNeutralMode(desiredMode);
+    lastNeutralMode = desiredMode;
   }
+
+  if (DriverStation.isDisabled()) {
+    appliedVoltage = 0.0;
+  } else {
+    appliedVoltage = MathUtil.clamp(outputs.appliedVoltage, -12.0, 12.0);
+  }
+
+  motor.setControl(voltageRequest.withOutput(appliedVoltage));
+}
 }

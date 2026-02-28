@@ -25,6 +25,7 @@
 
 package org.tidalforce.frc2026.subsystems.kicker;
 
+import java.util.function.BooleanSupplier;
 import lombok.Getter;
 import lombok.Setter;
 import org.littletonrobotics.junction.AutoLogOutput;
@@ -39,20 +40,17 @@ public class Kicker extends FullSubsystem {
   private static final LoggedTunableNumber rollerOuttakeVolts =
       new LoggedTunableNumber("Kicker/Roller/OuttakeVolts", -8.0);
 
-  private final RollerSystem rollerFront;
-  private final RollerSystem rollerBack;
+  private final RollerSystem roller;
 
   @Getter @Setter @AutoLogOutput private Goal goal = Goal.STOP;
 
-  public Kicker(RollerSystemIO rollerIOFront, RollerSystemIO rollerIOBack) {
-    this.rollerFront = new RollerSystem("Kicker roller front", "Kicker/RollerFront", rollerIOFront);
-    this.rollerBack = new RollerSystem("Kicker roller back", "Kicker/RollerBack", rollerIOBack);
+  public Kicker(RollerSystemIO rollerIO) {
+    this.roller = new RollerSystem("Kicker roller front", "Kicker/RollerFront", rollerIO);
   }
 
   public void periodic() {
 
-    rollerFront.periodic();
-    rollerBack.periodic();
+    roller.periodic();
 
     double rollerVolts = 0.0;
     switch (goal) {
@@ -67,14 +65,16 @@ public class Kicker extends FullSubsystem {
         rollerVolts = 0.0;
       }
     }
-    rollerFront.setVolts(rollerVolts);
-    rollerBack.setVolts(rollerVolts);
+    roller.setVolts(rollerVolts);
   }
 
   @Override
   public void periodicAfterScheduler() {
-    rollerFront.periodicAfterScheduler();
-    rollerBack.periodicAfterScheduler();
+    roller.periodicAfterScheduler();
+  }
+
+  public void setCoastOverride(BooleanSupplier coast) {
+    roller.setCoastOverride(coast);
   }
 
   public enum Goal {

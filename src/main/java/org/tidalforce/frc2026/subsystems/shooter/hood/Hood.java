@@ -34,8 +34,10 @@ import edu.wpi.first.math.util.Units;
 import edu.wpi.first.wpilibj.Alert;
 import edu.wpi.first.wpilibj.DriverStation;
 import edu.wpi.first.wpilibj2.command.Command;
+import java.util.function.BooleanSupplier;
 import java.util.function.DoubleSupplier;
 import lombok.Getter;
+import lombok.Setter;
 import lombok.experimental.Accessors;
 import org.littletonrobotics.junction.AutoLogOutput;
 import org.littletonrobotics.junction.Logger;
@@ -82,6 +84,8 @@ public class Hood extends FullSubsystem {
   private final Alert motorDisconnectedAlert =
       new Alert("Hood motor disconnected!", Alert.AlertType.kWarning);
 
+  @Setter private BooleanSupplier coastOverride = () -> false;
+
   private TrapezoidProfile profile;
   @Getter private State setpoint = new State();
 
@@ -94,6 +98,7 @@ public class Hood extends FullSubsystem {
   private double goalVelocity = 0.0;
 
   private static double hoodOffset = 0.0;
+  private boolean hoodZeroed = false;
 
   public Hood(HoodIO io) {
     this.io = io;
@@ -110,6 +115,15 @@ public class Hood extends FullSubsystem {
 
     motorDisconnectedAlert.set(
         Robot.showHardwareAlerts() && !motorConnectedDebouncer.calculate(inputs.connected));
+
+    // Stop when disabled
+    if (DriverStation.isDisabled() || (!hoodZeroed && outputs.mode != HoodIOOutputMode.OPEN_LOOP)) {
+      outputs.mode = HoodIOOutputMode.BRAKE;
+
+      if (coastOverride.getAsBoolean()) {
+        outputs.mode = HoodIOOutputMode.COAST;
+      }
+    }
 
     // Update tunable numbers
     outputs.kP = kP.get();
@@ -188,6 +202,7 @@ public class Hood extends FullSubsystem {
 
   private void zero() {
     hoodOffset = minAngle - inputs.positionRads;
+    hoodZeroed = true;
   }
 
   public Command runTrackTargetCommand() {
@@ -203,6 +218,10 @@ public class Hood extends FullSubsystem {
   }
 
   public Command zeroCommand() {
-    return runOnce(this::zero).ignoringDisable(true);
+    return run(() -> {
+          outputs.mode = HoodIOOutputMode.OPEN_LOOP;
+          hoodZeroed = false;
+        })
+        .andThen(this::zero);
   }
 }
