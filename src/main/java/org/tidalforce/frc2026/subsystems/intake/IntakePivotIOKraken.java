@@ -25,6 +25,7 @@
 
 package org.tidalforce.frc2026.subsystems.intake;
 
+import com.ctre.phoenix6.configs.TalonFXConfiguration;
 import com.ctre.phoenix6.controls.PositionVoltage;
 import com.ctre.phoenix6.hardware.TalonFX;
 import com.ctre.phoenix6.signals.NeutralModeValue;
@@ -32,25 +33,57 @@ import edu.wpi.first.math.MathUtil;
 import edu.wpi.first.wpilibj.DriverStation;
 
 public class IntakePivotIOKraken implements IntakePivotIO {
+
   private final TalonFX motor;
-  private double appliedVoltage = 0.0;
 
-  private final double inPositionRads;
-  private final double outPositionRads;
+  // Motor rotations : mechanism rotation
+  private static final double GEAR_RATIO = 25.0;
 
-  public IntakePivotIOKraken(
-      int motorId, String canBus, double inPositionRads, double outPositionRads) {
+  // Gravity compensation voltage (starting estimate)
+  private static final double kG = 0.35;
+
+  // Safe mechanical limits (adjust after testing)
+  private static final double MIN_RAD = -70.0;
+  private static final double MAX_RAD = 0.0;
+
+  private final PositionVoltage positionRequest = new PositionVoltage(0).withSlot(0);
+
+  public IntakePivotIOKraken(int motorId, String canBus) {
+
     motor = new TalonFX(motorId, canBus);
-    this.inPositionRads = inPositionRads;
-    this.outPositionRads = outPositionRads;
+
+    var config = new TalonFXConfiguration();
+
+    // PID starting values
+    config.Slot0.kP = 8.0;
+    config.Slot0.kI = 0.0;
+    config.Slot0.kD = 0.2;
+
+    // Tell TalonFX the mechanism ratio
+    config.Feedback.SensorToMechanismRatio = GEAR_RATIO;
+
+    // Slow and safe for first tests
+    config.Voltage.PeakForwardVoltage = 3.0;
+    config.Voltage.PeakReverseVoltage = -3.0;
+
+    // Hold pivot position
+    config.MotorOutput.NeutralMode = NeutralModeValue.Brake;
+
+    motor.getConfigurator().apply(config);
   }
 
   @Override
   public void updateInputs(IntakePivotIOInputs inputs) {
+
     inputs.connected = motor.isAlive();
-    inputs.positionRads = motor.getPosition().getValueAsDouble() * 2.0 * Math.PI;
-    inputs.velocityRadsPerSec = motor.getVelocity().getValueAsDouble() * 2.0 * Math.PI;
-    inputs.appliedVoltage = appliedVoltage;
+
+    double mechanismRotations = motor.getPosition().getValueAsDouble();
+    double mechanismVelocity = motor.getVelocity().getValueAsDouble();
+
+    inputs.positionRads = mechanismRotations * 2.0 * Math.PI;
+    inputs.velocityRadsPerSec = mechanismVelocity * 2.0 * Math.PI;
+
+    inputs.appliedVoltage = motor.getMotorVoltage().getValueAsDouble();
     inputs.supplyCurrentAmps = motor.getSupplyCurrent().getValueAsDouble();
     inputs.torqueCurrentAmps = motor.getTorqueCurrent().getValueAsDouble();
     inputs.tempCelsius = motor.getDeviceTemp().getValueAsDouble();
@@ -58,55 +91,24 @@ public class IntakePivotIOKraken implements IntakePivotIO {
 
   @Override
   public void applyOutputs(IntakePivotIOOutputs outputs) {
+
     motor.setNeutralMode(
         outputs.brakeModeEnabled ? NeutralModeValue.Brake : NeutralModeValue.Coast);
 
-    // clamp voltage
     if (DriverStation.isDisabled()) {
-      appliedVoltage = 0.0;
-    } else {
-      appliedVoltage = MathUtil.clamp(outputs.appliedVoltage, -12.0, 12.0);
+      motor.stopMotor();
+      return;
     }
 
-    // convert radians → rotations
-    double targetRotations = outputs.targetPositionRads / (2.0 * Math.PI);
+    // Clamp pivot targets to safe range
+    double targetRads = MathUtil.clamp(outputs.targetPositionRads, MIN_RAD, MAX_RAD);
 
-    // make a PositionVoltage control request
-    var request =
-        new PositionVoltage(targetRotations)
-            .withFeedForward(appliedVoltage) // extra voltage to help hold or assist motion
-            .withSlot(0); // use your PID slot
+    // Convert radians -> mechanism rotations
+    double targetRotations = targetRads / (2.0 * Math.PI);
 
-    motor.setControl(request);
-  }
+    // Gravity compensation
+    double gravityFF = kG * Math.cos(targetRads);
 
-  @Override
-  public void setIn() {
-    applyOutputs(
-        new IntakePivotIOOutputs() {
-          {
-            targetPositionRads = inPositionRads;
-          }
-        });
-  }
-
-  @Override
-  public void setOut() {
-    applyOutputs(
-        new IntakePivotIOOutputs() {
-          {
-            targetPositionRads = outPositionRads;
-          }
-        });
-  }
-
-  @Override
-  public void stop() {
-    applyOutputs(
-        new IntakePivotIOOutputs() {
-          {
-            appliedVoltage = 0.0;
-          }
-        });
+    motor.setControl(positionRequest.withPosition(targetRotations).withFeedForward(gravityFF));
   }
 }

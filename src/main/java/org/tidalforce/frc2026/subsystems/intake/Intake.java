@@ -25,6 +25,7 @@
 
 package org.tidalforce.frc2026.subsystems.intake;
 
+import java.util.function.BooleanSupplier;
 import lombok.Getter;
 import lombok.Setter;
 import org.littletonrobotics.junction.AutoLogOutput;
@@ -35,9 +36,11 @@ import org.tidalforce.frc2026.util.LoggedTunableNumber;
 
 public class Intake extends FullSubsystem {
   private static final LoggedTunableNumber rollerIntakeVolts =
-      new LoggedTunableNumber("Intake/Roller/IntakeVolts", 8.0);
+      new LoggedTunableNumber("Intake/Roller/IntakeVolts", 4.0);
   private static final LoggedTunableNumber rollerOuttakeVolts =
-      new LoggedTunableNumber("Intake/Roller/OuttakeVolts", -8.0);
+      new LoggedTunableNumber("Intake/Roller/OuttakeVolts", -4.0);
+  private static final LoggedTunableNumber rollerOutpostVolts =
+      new LoggedTunableNumber("Intake/Roller/OutpostVolts", -0.2);
 
   private final RollerSystem roller;
 
@@ -60,6 +63,9 @@ public class Intake extends FullSubsystem {
       case OUTTAKE -> {
         rollerVolts = rollerOuttakeVolts.get();
       }
+      case OUTPOST -> {
+        rollerVolts = rollerOutpostVolts.get();
+      }
       case STOP -> {
         rollerVolts = 0.0;
       }
@@ -72,9 +78,14 @@ public class Intake extends FullSubsystem {
     roller.periodicAfterScheduler();
   }
 
+  public void setCoastOverride(BooleanSupplier coast) {
+    roller.setCoastOverride(coast);
+  }
+
   public enum Goal {
     INTAKE,
     OUTTAKE,
+    OUTPOST,
     STOP
   }
 }

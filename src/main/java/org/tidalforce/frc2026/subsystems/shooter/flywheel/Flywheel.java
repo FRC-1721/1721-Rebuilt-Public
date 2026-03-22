@@ -27,8 +27,10 @@ package org.tidalforce.frc2026.subsystems.shooter.flywheel;
 
 import edu.wpi.first.math.filter.Debouncer;
 import edu.wpi.first.math.filter.SlewRateLimiter;
+import edu.wpi.first.units.Units;
 import edu.wpi.first.wpilibj.Alert;
 import edu.wpi.first.wpilibj2.command.Command;
+import edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine;
 import java.util.function.DoubleSupplier;
 import lombok.Getter;
 import lombok.experimental.Accessors;
@@ -46,6 +48,7 @@ public class Flywheel extends FullSubsystem {
   private final FlywheelIO io;
   private final FlywheelIOInputsAutoLogged inputs = new FlywheelIOInputsAutoLogged();
   private final FlywheelIOOutputs outputs = new FlywheelIOOutputs();
+  private final SysIdRoutine sysIdRoutine;
 
   private final Debouncer motorConnectedDebouncer =
       new Debouncer(0.5, Debouncer.DebounceType.kFalling);
@@ -57,6 +60,7 @@ public class Flywheel extends FullSubsystem {
       new LoggedTunableNumber("Flywheel/kVMaxVelocity");
   public static final LoggedTunableNumber kP = new LoggedTunableNumber("Flywheel/kP");
   public static final LoggedTunableNumber kD = new LoggedTunableNumber("Flywheel/kD");
+  public static final LoggedTunableNumber kA = new LoggedTunableNumber("Flywheel/kA");
   private static final LoggedTunableNumber rateLimiter =
       new LoggedTunableNumber("Flywheel/SlewRateLimiter");
 
@@ -72,11 +76,11 @@ public class Flywheel extends FullSubsystem {
   static {
     switch (Constants.robot) {
       case COMP -> {
-        rateLimiter.initDefault(300);
-        kS.initDefault(0.0);
-        kV.initDefault(0.0);
-        kVMaxVelocity.initDefault(0.0);
-        kP.initDefault(0.0);
+        rateLimiter.initDefault(800);
+        kS.initDefault(1.0156);
+        kV.initDefault(0.12427);
+        kA.initDefault(0.044126);
+        kP.initDefault(0.21353);
         kD.initDefault(0.0);
       }
       case DEV -> {
@@ -101,6 +105,23 @@ public class Flywheel extends FullSubsystem {
     this.io = io;
 
     disconnected = new Alert("Flywheel motor disconnected!", Alert.AlertType.kWarning);
+
+    sysIdRoutine =
+        new SysIdRoutine(
+            new SysIdRoutine.Config(),
+            new SysIdRoutine.Mechanism(
+                (voltage) -> {
+                  outputs.coast = false;
+                  outputs.voltageMode = true;
+                  outputs.voltage = voltage.in(Units.Volts);
+                },
+                log -> {
+                  log.motor("flywheel")
+                      .voltage(Units.Volts.of(inputs.appliedVoltage))
+                      .angularVelocity(Units.RadiansPerSecond.of(inputs.velocityRadsPerSec))
+                      .angularPosition(Units.Radians.of(inputs.positionRads));
+                },
+                this));
   }
 
   public void periodic() {
@@ -171,5 +192,13 @@ public class Flywheel extends FullSubsystem {
 
   public Command runGoalCommand() {
     return runEnd(() -> runVelocity(goalRadsPerSec), this::stop);
+  }
+
+  public Command sysIdQuasistatic(SysIdRoutine.Direction direction) {
+    return sysIdRoutine.quasistatic(direction);
+  }
+
+  public Command sysIdDynamic(SysIdRoutine.Direction direction) {
+    return sysIdRoutine.dynamic(direction);
   }
 }

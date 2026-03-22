@@ -27,9 +27,12 @@ package org.tidalforce.frc2026.subsystems.rollers;
 
 import edu.wpi.first.math.filter.Debouncer;
 import edu.wpi.first.wpilibj.Alert;
+import edu.wpi.first.wpilibj.DriverStation;
+import java.util.function.BooleanSupplier;
 import lombok.Setter;
 import org.littletonrobotics.junction.Logger;
 import org.tidalforce.frc2026.Robot;
+import org.tidalforce.frc2026.subsystems.rollers.RollerSystemIO.RollerSystemIOMode;
 import org.tidalforce.frc2026.subsystems.rollers.RollerSystemIO.RollerSystemIOOutputs;
 import org.tidalforce.frc2026.util.FullSubsystem;
 import org.tidalforce.frc2026.util.LoggedTracer;
@@ -47,6 +50,8 @@ public class RollerSystem extends FullSubsystem {
 
   @Setter private double volts = 0.0;
   @Setter private boolean brakeModeEnabled = true;
+
+  @Setter private BooleanSupplier coastOverride = () -> false;
 
   public RollerSystem(String name, String inputsName, RollerSystemIO io) {
     this.name = name;
@@ -72,6 +77,15 @@ public class RollerSystem extends FullSubsystem {
     LoggedTracer.record(name);
 
     Logger.recordOutput(inputsName + "/BrakeModeEnabled", brakeModeEnabled);
+
+    // Update mode
+    if (DriverStation.isDisabled()) {
+      outputs.mode = RollerSystemIOMode.BRAKE;
+
+      if (coastOverride.getAsBoolean()) {
+        outputs.mode = RollerSystemIOMode.COAST;
+      }
+    }
   }
 
   @Override

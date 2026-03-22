@@ -44,7 +44,9 @@ public interface HoodIO {
   public static enum HoodIOOutputMode {
     BRAKE,
     COAST,
-    CLOSED_LOOP
+    CLOSED_LOOP,
+    OPEN_LOOP,
+    CHARACTERIZATION
   }
 
   public static class HoodIOOutputs {

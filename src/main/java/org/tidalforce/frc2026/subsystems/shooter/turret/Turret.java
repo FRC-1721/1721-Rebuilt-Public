@@ -57,8 +57,8 @@ import org.tidalforce.frc2026.util.LoggedTracer;
 import org.tidalforce.frc2026.util.LoggedTunableNumber;
 
 public class Turret extends FullSubsystem {
-  private static final double minAngle = Units.degreesToRadians(-210.0);
-  private static final double maxAngle = Units.degreesToRadians(210.0);
+  private static final double minAngle = Units.degreesToRadians(-180.0);
+  private static final double maxAngle = Units.degreesToRadians(180.0);
   private static final double trackOverlapMargin = Units.degreesToRadians(10);
   private static final double trackCenterRads = (minAngle + maxAngle) / 2;
   private static final double trackMinAngle = trackCenterRads - Math.PI - trackOverlapMargin;
@@ -67,7 +67,7 @@ public class Turret extends FullSubsystem {
   private static final LoggedTunableNumber maxVelocity =
       new LoggedTunableNumber("Turret/MaxVelocity");
   private static final LoggedTunableNumber maxAcceleration =
-      new LoggedTunableNumber("Turret/MaxAcceleration", 9999999);
+      new LoggedTunableNumber("Turret/MaxAcceleration", 2);
   private static final LoggedTunableNumber kP = new LoggedTunableNumber("Turret/kP");
   private static final LoggedTunableNumber kD = new LoggedTunableNumber("Turret/kD");
   private static final LoggedTunableNumber kA = new LoggedTunableNumber("Turret/kA");
@@ -75,8 +75,8 @@ public class Turret extends FullSubsystem {
   static {
     switch (Constants.robot) {
       case COMP -> {
-        maxVelocity.initDefault(0.5);
-        kP.initDefault(500.0);
+        maxVelocity.initDefault(1);
+        kP.initDefault(40.0);
         kD.initDefault(0.0);
         kA.initDefault(0.0);
       }
@@ -186,7 +186,7 @@ public class Turret extends FullSubsystem {
   @Override
   public void periodicAfterScheduler() {
     // Delay tracking math until after the RobotState has been updated & turret zeroed
-    if (DriverStation.isEnabled() && turretZeroed) {
+    if (DriverStation.isEnabled() && turretZeroed && shootState == ShootState.TRACKING) {
       Rotation2d robotAngle = RobotState.getInstance().getRotation();
       double robotAngularVelocity =
           RobotState.getInstance().getFieldVelocity().omegaRadiansPerSecond;
@@ -240,25 +240,23 @@ public class Turret extends FullSubsystem {
       State goalState =
           new State(
               MathUtil.clamp(bestAngle, minLegalAngle, maxLegalAngle), robotRelativeGoalVelocity);
-
       setpoint = profile.calculate(Constants.loopPeriodSecs, setpoint, goalState);
+
       atGoal =
           EqualsUtil.epsilonEquals(bestAngle, setpoint.position)
               && EqualsUtil.epsilonEquals(robotRelativeGoalVelocity, setpoint.velocity);
+
       Logger.recordOutput("Turret/GoalPositionRad", bestAngle);
       Logger.recordOutput(
           "Turret/ShotCalcAngleRad",
           ShotCalculator.getInstance().getParameters().turretAngle().getRadians());
-
       Logger.recordOutput("Turret/AfterSchedulerAlive", Timer.getFPGATimestamp());
-
       Logger.recordOutput("Turret/GoalVelocityRadPerSec", robotRelativeGoalVelocity);
       Logger.recordOutput("Turret/SetpointPositionRad", setpoint.position);
       Logger.recordOutput("Turret/SetpointVelocityRadPerSec", setpoint.velocity);
       Logger.recordOutput(
           "Turret/ShotCalcAngleRad",
           ShotCalculator.getInstance().getParameters().turretAngle().getRadians());
-
       Logger.recordOutput("Turret/RobotRelativeGoalRad", robotRelativeGoalAngle.getRadians());
 
       outputs.mode = TurretIOOutputMode.CLOSED_LOOP;
@@ -312,6 +310,31 @@ public class Turret extends FullSubsystem {
 
   public Command zeroCommand() {
     return runOnce(this::zero).ignoringDisable(true);
+  }
+
+  // ---------------------
+  // SysID routines (quasistatic & dynamic)
+  // ---------------------
+  public Command runSysIdQuasistatic(DoubleSupplier volts) {
+    return runEnd(
+        () -> turretIO.applyOutputs(makeSysIdOutput(volts.getAsDouble())),
+        () -> turretIO.applyOutputs(new TurretIOOutputs()));
+  }
+
+  public Command runSysIdDynamic(DoubleSupplier volts) {
+    return runEnd(
+        () -> turretIO.applyOutputs(makeSysIdOutput(volts.getAsDouble())),
+        () -> turretIO.applyOutputs(new TurretIOOutputs()));
+  }
+
+  private TurretIOOutputs makeSysIdOutput(double volts) {
+    TurretIOOutputs o = new TurretIOOutputs();
+    o.mode = TurretIOOutputMode.CLOSED_LOOP;
+    o.position = getPosition(); // hold current position
+    o.velocity = 0.0; // manual voltage only
+    o.kP = 0.0;
+    o.kD = 0.0;
+    return o;
   }
 
   public enum ShootState {

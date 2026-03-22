@@ -29,52 +29,46 @@ import edu.wpi.first.wpilibj2.command.SubsystemBase;
 
 public class IntakePivotSubsystem extends SubsystemBase {
 
-  private boolean deployed = false;
-
   private final IntakePivotIO pivotIO;
   private final IntakePivotIO.IntakePivotIOInputs inputs = new IntakePivotIO.IntakePivotIOInputs();
   private final IntakePivotIO.IntakePivotIOOutputs outputs =
       new IntakePivotIO.IntakePivotIOOutputs();
 
-  /** Constructor takes any implementation of IntakePivotIO (hardware or sim) */
-  public IntakePivotSubsystem(IntakePivotIO pivotIO) {
+  private final double inPositionRads;
+  private final double outPositionRads;
+
+  private boolean deployed = false;
+
+  public IntakePivotSubsystem(
+      IntakePivotIO pivotIO, double inPositionRads, double outPositionRads) {
+
     this.pivotIO = pivotIO;
+    this.inPositionRads = inPositionRads;
+    this.outPositionRads = outPositionRads;
   }
 
-  /** Move the pivot to the deployed (out) position */
   public void deploy() {
-    pivotIO.setOut();
+    outputs.targetPositionRads = outPositionRads;
     deployed = true;
   }
 
-  /** Move the pivot to the stowed (in) position */
   public void stow() {
-    pivotIO.setIn();
+    outputs.targetPositionRads = inPositionRads;
     deployed = false;
   }
 
-  /** Stop the pivot motor */
   public void stopPivot() {
-    pivotIO.stop();
+    outputs.appliedVoltage = 0.0;
   }
 
-  /** Periodic update of inputs and outputs for logging and control */
   @Override
   public void periodic() {
-    // Update hardware inputs
     pivotIO.updateInputs(inputs);
-
-    // Apply outputs if needed (in this case, mostly handled by setIn/setOut)
     pivotIO.applyOutputs(outputs);
   }
 
-  /** Convenience getters for testing or simulation */
   public double getPositionRads() {
     return inputs.positionRads;
-  }
-
-  public double getVelocityRadsPerSec() {
-    return inputs.velocityRadsPerSec;
   }
 
   public boolean isDeployed() {

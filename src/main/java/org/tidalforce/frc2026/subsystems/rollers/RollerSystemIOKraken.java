@@ -25,6 +25,7 @@
 
 package org.tidalforce.frc2026.subsystems.rollers;
 
+import com.ctre.phoenix6.configs.TalonFXConfiguration;
 import com.ctre.phoenix6.controls.VoltageOut;
 import com.ctre.phoenix6.hardware.TalonFX;
 import com.ctre.phoenix6.signals.NeutralModeValue;
@@ -34,10 +35,18 @@ import edu.wpi.first.wpilibj.DriverStation;
 public class RollerSystemIOKraken implements RollerSystemIO {
   private final TalonFX motor;
   private final VoltageOut voltageRequest = new VoltageOut(0.0);
+
+  private final TalonFXConfiguration config = new TalonFXConfiguration();
   private double appliedVoltage = 0.0;
+  private NeutralModeValue lastNeutralMode = null;
 
   public RollerSystemIOKraken(int motorId, String canBus) {
     motor = new TalonFX(motorId, canBus);
+
+    // Safe ramp to reduce belt shock during spinup
+    config.ClosedLoopRamps.VoltageClosedLoopRampPeriod = 0.2;
+
+    motor.optimizeBusUtilization();
   }
 
   @Override
@@ -55,8 +64,14 @@ public class RollerSystemIOKraken implements RollerSystemIO {
 
   @Override
   public void applyOutputs(RollerSystemIOOutputs outputs) {
-    motor.setNeutralMode(
-        outputs.brakeModeEnabled ? NeutralModeValue.Brake : NeutralModeValue.Coast);
+
+    NeutralModeValue desiredMode =
+        outputs.brakeModeEnabled ? NeutralModeValue.Brake : NeutralModeValue.Coast;
+
+    if (desiredMode != lastNeutralMode) {
+      motor.setNeutralMode(desiredMode);
+      lastNeutralMode = desiredMode;
+    }
 
     if (DriverStation.isDisabled()) {
       appliedVoltage = 0.0;

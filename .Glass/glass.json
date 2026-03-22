@@ -10,6 +10,18 @@
     },
     "transitory": {
       "AdvantageKit": {
+        "Flywheel": {
+          "open": true
+        },
+        "RealOutputs": {
+          "open": true
+        },
+        "open": true
+      },
+      "Shuffleboard": {
+        "open": true
+      },
+      "SmartDashboard": {
         "open": true
       },
       "photonvision": {
@@ -22,10 +34,12 @@
       "/AdvantageKit/RealOutputs/PhotonAlerts": "Alerts",
       "/FMSInfo": "FMSInfo",
       "/SmartDashboard/Alerts": "Alerts",
+      "/SmartDashboard/Auto Choices": "String Chooser",
       "/SmartDashboard/AutoChooser": "String Chooser",
       "/SmartDashboard/Field": "Field2d",
       "/SmartDashboard/PathPlanner": "Alerts",
-      "/SmartDashboard/PhotonAlerts": "Alerts"
+      "/SmartDashboard/PhotonAlerts": "Alerts",
+      "/SmartDashboard/Side": "String Chooser"
     }
   },
   "NetworkTables Info": {

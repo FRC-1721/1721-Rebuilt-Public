@@ -25,10 +25,8 @@
 
 package org.tidalforce.frc2026;
 
-import static org.tidalforce.frc2026.subsystems.vision.VisionConstants.camera0Name;
 import static org.tidalforce.frc2026.subsystems.vision.VisionConstants.camera1Name;
-import static org.tidalforce.frc2026.subsystems.vision.VisionConstants.robotToCamera0;
-import static org.tidalforce.frc2026.subsystems.vision.VisionConstants.robotToCamera1;
+// import static org.tidalforce.frc2026.subsystems.vision.VisionConstants.robotToCamera1;
 
 import com.pathplanner.lib.auto.AutoBuilder;
 import com.pathplanner.lib.auto.NamedCommands;
@@ -40,10 +38,14 @@ import edu.wpi.first.math.geometry.Rotation2d;
 import edu.wpi.first.wpilibj.Alert;
 import edu.wpi.first.wpilibj.Alert.AlertType;
 import edu.wpi.first.wpilibj.DriverStation;
+import edu.wpi.first.wpilibj.GenericHID.RumbleType;
+import edu.wpi.first.wpilibj.Timer;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj2.command.Command;
+import edu.wpi.first.wpilibj2.command.Command.InterruptionBehavior;
 import edu.wpi.first.wpilibj2.command.Commands;
 import edu.wpi.first.wpilibj2.command.button.CommandXboxController;
+import edu.wpi.first.wpilibj2.command.button.RobotModeTriggers;
 import edu.wpi.first.wpilibj2.command.button.Trigger;
 import java.util.List;
 import java.util.Optional;
@@ -66,24 +68,28 @@ import org.tidalforce.frc2026.subsystems.drive.ModuleIOSim;
 import org.tidalforce.frc2026.subsystems.drive.ModuleIOTalonFX;
 import org.tidalforce.frc2026.subsystems.hopper.Hopper;
 import org.tidalforce.frc2026.subsystems.intake.Intake;
-import org.tidalforce.frc2026.subsystems.intake.IntakePivotIO;
+import org.tidalforce.frc2026.subsystems.intake.IntakePivotIOKraken;
 import org.tidalforce.frc2026.subsystems.intake.IntakePivotSubsystem;
 import org.tidalforce.frc2026.subsystems.kicker.Kicker;
 import org.tidalforce.frc2026.subsystems.leds.LEDs;
 import org.tidalforce.frc2026.subsystems.leds.LEDsConstants;
 import org.tidalforce.frc2026.subsystems.rollers.RollerSystemIO;
+import org.tidalforce.frc2026.subsystems.rollers.RollerSystemIOKraken;
 import org.tidalforce.frc2026.subsystems.shooter.LaunchCalculator;
 import org.tidalforce.frc2026.subsystems.shooter.flywheel.Flywheel;
 import org.tidalforce.frc2026.subsystems.shooter.flywheel.FlywheelIO;
+import org.tidalforce.frc2026.subsystems.shooter.flywheel.FlywheelIOKraken;
 import org.tidalforce.frc2026.subsystems.shooter.hood.Hood;
 import org.tidalforce.frc2026.subsystems.shooter.hood.HoodIO;
+import org.tidalforce.frc2026.subsystems.shooter.hood.HoodIOKraken;
 import org.tidalforce.frc2026.subsystems.shooter.turret.Turret;
 import org.tidalforce.frc2026.subsystems.shooter.turret.TurretIO;
+import org.tidalforce.frc2026.subsystems.shooter.turret.TurretIOKraken;
 // import org.tidalforce.frc2026.subsystems.shooter.turret.TurretIOSim;
 import org.tidalforce.frc2026.subsystems.vision.Vision;
-import org.tidalforce.frc2026.subsystems.vision.VisionIOPhotonVision;
-import org.tidalforce.frc2026.subsystems.vision.VisionIOPhotonVisionSim;
+// import org.tidalforce.frc2026.subsystems.vision.VisionIOPhotonVisionSim;
 import org.tidalforce.frc2026.util.FuelSim;
+import org.tidalforce.frc2026.util.HubShiftUtil;
 import org.tidalforce.frc2026.util.LoggedTunableNumber;
 import org.tidalforce.frc2026.util.controllers.OverrideSwitches;
 import org.tidalforce.frc2026.util.controllers.TriggerUtil;
@@ -106,8 +112,8 @@ public class RobotContainer {
   private LEDs leds;
   private IntakePivotSubsystem intakePivot;
   private org.photonvision.PhotonCamera fuelCamera;
+  //   private Intake turrethaha;
 
-  
   private final Trigger isAutonomous = new Trigger(DriverStation::isAutonomous);
   private final Trigger isDisabled = new Trigger(DriverStation::isDisabled);
 
@@ -120,6 +126,7 @@ public class RobotContainer {
 
   // Driver Overrides
   private final Trigger coast = overrides.driverSwitch(0);
+  private final Trigger ignoreHubState = overrides.driverSwitch(1);
   private final Trigger wonAutoOverride = overrides.multiDirectionSwitch1Up();
   private final Trigger lostAutoOverride = overrides.multiDirectionSwitch1Down();
   private final Trigger aggresivePathfinding = overrides.multiDirectionSwitch2Down();
@@ -137,8 +144,23 @@ public class RobotContainer {
       new Alert("TBC controller disconnected (port 0).", AlertType.kWarning);
   private final Alert secondaryDisconnected =
       new Alert("Secondary controller disconnected (port 1).", AlertType.kWarning);
+  private final Alert overrideDisconnected =
+      new Alert("Override controller disconnected (port 2).", AlertType.kWarning);
+  private final Alert autoWinnerNotSet = new Alert("!!! AUTO WINNER NOT SET !!!", AlertType.kError);
 
   private final LoggedDashboardChooser<Command> autoChooser;
+
+  private boolean coastOverride = false;
+
+  private enum PathMode {
+    AGGRESSIVE,
+    MID,
+    PASSIVE,
+    FUEL,
+    NONE
+  }
+
+  private PathMode currentPathMode = PathMode.NONE;
 
   public RobotContainer() {
     m_flipChooser = new LoggedDashboardChooser<>("Side");
@@ -159,7 +181,10 @@ public class RobotContainer {
           //   vision =
           //       new Vision(
           //           drive::addVisionMeasurement,
-          //           new VisionIOPhotonVision(camera0Name, robotToCamera0));
+          //           new VisionIOPhotonVision(
+          //               camera0Name,
+          //               () ->
+          // ShooterConstants.robotToTurret.plus(ShooterConstants.turretToCamera)));
           //   fuelCamera = new org.photonvision.PhotonCamera(camera1Name);
           // leds = LEDsConstants.get();
           //   leds =
@@ -168,45 +193,52 @@ public class RobotContainer {
           //               org.tidalforce.frc2026.subsystems.leds.LEDsConstants.NAME,
           //               org.tidalforce.frc2026.subsystems.leds.LEDsConstants.CANDLE_ID,
           //               org.tidalforce.frc2026.subsystems.leds.LEDsConstants.CANDLE_CONFIG));
-          //   hood =
-          //       new Hood(
-          //           new HoodIOKraken(
-          //               org.tidalforce.frc2026.subsystems.shooter.hood.HoodConstants.HOODID,
-          //               org.tidalforce.frc2026.subsystems.shooter.hood.HoodConstants.CAN_BUS));
-          //   flywheel =
-          //       new Flywheel(
-          //           new FlywheelIOKraken(
-          //               org.tidalforce.frc2026.subsystems.shooter.flywheel.FlywheelConstants
-          //                   .FYLWHEELIDMAINID,
-          //               org.tidalforce.frc2026.subsystems.shooter.flywheel.FlywheelConstants
-          //                   .FLYWHEELFOLLOWID,
-          //               org.tidalforce.frc2026.subsystems.shooter.flywheel.FlywheelConstants
-          //                   .CAN_BUS));
-          //   kicker =
-          //       new Kicker(
-          //           new RollerSystemIOKraken(
-          //               org.tidalforce.frc2026.subsystems.rollers.RollerConstants.KICKER_ID,
-          //               org.tidalforce.frc2026.subsystems.rollers.RollerConstants.CAN_BUS),
-          //           new RollerSystemIOKraken(
-          //               org.tidalforce.frc2026.subsystems.rollers.RollerConstants.KICKER_ID,
-          //               org.tidalforce.frc2026.subsystems.rollers.RollerConstants.CAN_BUS));
-          //   hopper =
-          //       new Hopper(
-          //           new RollerSystemIOKraken(
-          //               org.tidalforce.frc2026.subsystems.rollers.RollerConstants.HOPPER_ID,
-          //               org.tidalforce.frc2026.subsystems.rollers.RollerConstants.CAN_BUS));
-          //   intake =
-          //       new Intake(
-          //           new RollerSystemIOKraken(
-          //               org.tidalforce.frc2026.subsystems.rollers.RollerConstants.INTAKE_ID,
-          //               org.tidalforce.frc2026.subsystems.rollers.RollerConstants.CAN_BUS));
-          //   intakePivot =
-          //       new IntakePivotSubsystem(
-          //           new IntakePivotIOKraken(
-          //               org.tidalforce.frc2026.subsystems.intake.IntakeConstants.INTAKEPIVOT_ID,
-          //               org.tidalforce.frc2026.subsystems.intake.IntakeConstants.CAN_BUS,
-          //               org.tidalforce.frc2026.subsystems.intake.IntakeConstants.IN_POSITION,
-          //               org.tidalforce.frc2026.subsystems.intake.IntakeConstants.OUT_POSITION));
+          hood =
+              new Hood(
+                  new HoodIOKraken(
+                      org.tidalforce.frc2026.subsystems.shooter.hood.HoodConstants.HOODID,
+                      org.tidalforce.frc2026.subsystems.shooter.hood.HoodConstants.CAN_BUS));
+          flywheel =
+              new Flywheel(
+                  new FlywheelIOKraken(
+                      org.tidalforce.frc2026.subsystems.shooter.flywheel.FlywheelConstants
+                          .FYLWHEELIDMAINID,
+                      org.tidalforce.frc2026.subsystems.shooter.flywheel.FlywheelConstants
+                          .FLYWHEELFOLLOWID,
+                      org.tidalforce.frc2026.subsystems.shooter.flywheel.FlywheelConstants
+                          .CAN_BUS));
+          turret =
+              new Turret(
+                  new TurretIOKraken(
+                      org.tidalforce.frc2026.subsystems.shooter.turret.TurretConstants.TURRET_ID,
+                      org.tidalforce.frc2026.subsystems.shooter.turret.TurretConstants.CAN_BUS));
+          kicker =
+              new Kicker(
+                  new RollerSystemIOKraken(
+                      org.tidalforce.frc2026.subsystems.rollers.RollerConstants.KICKER_ID,
+                      org.tidalforce.frc2026.subsystems.rollers.RollerConstants.CAN_BUS));
+          hopper =
+              new Hopper(
+                  new RollerSystemIOKraken(
+                      org.tidalforce.frc2026.subsystems.rollers.RollerConstants.HOPPER_ID,
+                      org.tidalforce.frc2026.subsystems.rollers.RollerConstants.CAN_BUS));
+          intake =
+              new Intake(
+                  new RollerSystemIOKraken(
+                      org.tidalforce.frc2026.subsystems.rollers.RollerConstants.INTAKE_ID,
+                      org.tidalforce.frc2026.subsystems.rollers.RollerConstants.CAN_BUS));
+          // turrethaha =
+          // new Intake(
+          //     new RollerSystemIOKraken(
+          //         org.tidalforce.frc2026.subsystems.rollers.RollerConstants.TURRET_ID,
+          //         org.tidalforce.frc2026.subsystems.rollers.RollerConstants.CAN_BUS));
+            intakePivot =
+                new IntakePivotSubsystem(
+                    new IntakePivotIOKraken(
+                        org.tidalforce.frc2026.subsystems.intake.IntakeConstants.INTAKEPIVOT_ID,
+                        org.tidalforce.frc2026.subsystems.intake.IntakeConstants.CAN_BUS),
+                    org.tidalforce.frc2026.subsystems.intake.IntakeConstants.IN_POSITION,
+                    org.tidalforce.frc2026.subsystems.intake.IntakeConstants.OUT_POSITION);
           //   batteryTracker = new BatteryTracker(new BatteryIOReal());
         }
         case DEV -> {
@@ -217,10 +249,10 @@ public class RobotContainer {
                   new ModuleIOTalonFX(TunerConstants.FrontRight),
                   new ModuleIOTalonFX(TunerConstants.BackLeft),
                   new ModuleIOTalonFX(TunerConstants.BackRight));
-          vision =
-              new Vision(
-                  drive::addVisionMeasurement,
-                  new VisionIOPhotonVision(camera0Name, robotToCamera0));
+          //   vision =
+          //       new Vision(
+          //           drive::addVisionMeasurement,
+          //           new VisionIOPhotonVision(camera0Name, robotToCamera0));
 
           fuelCamera = new org.photonvision.PhotonCamera(camera1Name);
           // batteryTracker = new BatteryTracker(new BatteryIOReal());
@@ -235,11 +267,11 @@ public class RobotContainer {
                   new ModuleIOSim(TunerConstants.BackRight));
           // turret = new Turret(new TurretIOSim());
           leds = LEDsConstants.get();
-          vision =
-              new Vision(
-                  drive::addVisionMeasurement,
-                  new VisionIOPhotonVisionSim(camera0Name, robotToCamera0, drive::getPose),
-                  new VisionIOPhotonVisionSim(camera1Name, robotToCamera1, drive::getPose));
+          //   vision =
+          //       new Vision(
+          //           drive::addVisionMeasurement,
+          //           new VisionIOPhotonVisionSim(camera0Name, robotToCamera0, drive::getPose),
+          //           new VisionIOPhotonVisionSim(camera1Name, robotToCamera1, drive::getPose));
           // batteryTracker = new BatteryTracker(new BatteryIO() {});
           fuelCamera = new org.photonvision.PhotonCamera(camera1Name);
           ObjectDetection.setFuelSim(new FuelSim());
@@ -261,12 +293,27 @@ public class RobotContainer {
     if (hood == null) hood = new Hood(new HoodIO() {});
     if (flywheel == null) flywheel = new Flywheel(new FlywheelIO() {});
     if (turret == null) turret = new Turret(new TurretIO() {});
-    if (kicker == null) kicker = new Kicker(new RollerSystemIO() {}, new RollerSystemIO() {});
-    if (intakePivot == null) intakePivot = new IntakePivotSubsystem(new IntakePivotIO() {});
+    if (kicker == null) kicker = new Kicker(new RollerSystemIO() {});
+
+    // Set up overrides
+    hood.setCoastOverride(() -> coastOverride);
+    hopper.setCoastOverride(() -> coastOverride);
+    intake.setCoastOverride(() -> coastOverride);
+    kicker.setCoastOverride(() -> coastOverride);
+    HubShiftUtil.setAllianceWinOverride(
+        () -> {
+          if (lostAutoOverride.getAsBoolean()) {
+            return Optional.of(false);
+          }
+          if (wonAutoOverride.getAsBoolean()) {
+            return Optional.of(true);
+          }
+          return Optional.empty();
+        });
 
     // turret.setDefaultCommand(turret.runTrackTargetCommand());
-    hood.setDefaultCommand(hood.runTrackTargetCommand());
-    flywheel.setDefaultCommand(flywheel.runTrackTargetCommand());
+    // hood.setDefaultCommand(hood.runTrackTargetCommand());
+    // flywheel.setDefaultCommand(flywheel.runFixedCommand(() -> 900));
 
     registerNamedCommands();
 
@@ -274,18 +321,19 @@ public class RobotContainer {
     autoChooser.addDefaultOption("Do Nothing", Commands.none());
     autoChooser.addOption(
         "Drive Wheel Radius Characterization", DriveCommands.wheelRadiusCharacterization(drive));
+    autoChooser.addOption("FF Characterization", DriveCommands.feedforwardCharacterization(drive));
 
     SmartDashboard.putData("AutoChooser", autoChooser.getSendableChooser());
 
     configureButtonBindings();
-    configureLEDTriggers();
+    // configureLEDTriggers();
 
     drive.setDefaultCommand(
         DriveCommands.joystickDrive(
             drive,
-            () -> -TBC.getLeftY() * speedMultiplier.getAsDouble() - secondary.getLeftY(),
-            () -> -TBC.getLeftX() * speedMultiplier.getAsDouble() - secondary.getLeftX(),
-            () -> -TBC.getRightX() - secondary.getRightX()));
+            () -> -TBC.getLeftY() * speedMultiplier.getAsDouble(),
+            () -> -TBC.getLeftX() * speedMultiplier.getAsDouble(),
+            () -> -TBC.getRightX()));
 
     if (drive != null) {
       // Create a field object to send to Elastic
@@ -337,24 +385,30 @@ public class RobotContainer {
 
   private Command slowPathfindTo(Supplier<Pose2d> pose) {
     return Commands.defer(
-        () -> AutoBuilder.pathfindToPose(pose.get(), DriveCommands.slowPathConstraints()),
-        Set.of(drive));
+            () -> AutoBuilder.pathfindToPose(pose.get(), DriveCommands.slowPathConstraints()),
+            Set.of(drive))
+        .beforeStarting(() -> currentPathMode = PathMode.PASSIVE)
+        .finallyDo(() -> currentPathMode = PathMode.NONE);
   }
 
   private Command midLevelPathfindTo(Supplier<Pose2d> pose) {
     return Commands.defer(
-        () -> AutoBuilder.pathfindToPose(pose.get(), DriveCommands.midLevelPathConstraints()),
-        Set.of(drive));
+            () -> AutoBuilder.pathfindToPose(pose.get(), DriveCommands.midLevelPathConstraints()),
+            Set.of(drive))
+        .beforeStarting(() -> currentPathMode = PathMode.MID)
+        .finallyDo(() -> currentPathMode = PathMode.NONE);
   }
 
   private Command compPathfindTo(Supplier<Pose2d> pose) {
     return Commands.defer(
-        () -> AutoBuilder.pathfindToPose(pose.get(), DriveCommands.compPathConstraints()),
-        Set.of(drive));
+            () -> AutoBuilder.pathfindToPose(pose.get(), DriveCommands.compPathConstraints()),
+            Set.of(drive))
+        .beforeStarting(() -> currentPathMode = PathMode.AGGRESSIVE)
+        .finallyDo(() -> currentPathMode = PathMode.NONE);
   }
 
-  private Command shootCommand =
-    Commands.parallel(
+  private Command shootCommand() {
+    return Commands.parallel(
             Commands.startEnd(
                 () -> hopper.setGoal(Hopper.Goal.SHOOT),
                 () -> hopper.setGoal(Hopper.Goal.STOP),
@@ -362,48 +416,104 @@ public class RobotContainer {
             Commands.startEnd(
                 () -> kicker.setGoal(Kicker.Goal.SHOOT),
                 () -> kicker.setGoal(Kicker.Goal.STOP),
-                kicker))
+                kicker),
+            flywheel.runTrackTargetCommand())
         .withName("ShootCommand");
+  }
 
   private Pose2d getFuturePose(double seconds) {
     return drive.getPose().exp(drive.getChassisSpeeds().toTwist2d(seconds));
   }
 
   private void configureButtonBindings() {
+    Trigger hubActiveOrPassing =
+        new Trigger(
+            () ->
+                HubShiftUtil.getShiftedShiftInfo().active()
+                    || LaunchCalculator.getInstance().getParameters().passing());
+
     Trigger inLaunchingTolerance =
         new Trigger(() -> hood.atGoal() && flywheel.atGoal() && DriveCommands.atLaunchGoal());
 
-    TBC.povDown().whileTrue(Commands.runOnce(() -> intakePivot.deploy(), intakePivot));
+    TBC.povUp().whileTrue(DriveCommands.wheelRadiusCharacterization(drive));
 
-    TBC.povUp().whileTrue(Commands.runOnce(() -> intakePivot.stow(), intakePivot));
+    TBC.povDown().whileTrue(Commands.runOnce(() -> intakePivot.stow(), intakePivot));
 
-    TBC.povLeft()
+    // TBC.povDown().whileTrue(Commands.runOnce(() -> intakePivot.deploy(), intakePivot));
+
+    // TBC.povUp().whileTrue(Commands.runOnce(() -> intakePivot.stow(), intakePivot));
+
+    TBC.povRight()
         .whileTrue(
-            compPathfindTo(
-                () ->
-                    ObjectDetection.getInstance()
-                        .getDensestFuelClusterPose()
-                        .orElse(RobotState.getInstance().getEstimatedPose())));
+            Commands.parallel(
+                Commands.runEnd(
+                    () -> kicker.setGoal(Kicker.Goal.SHOOT),
+                    () -> kicker.setGoal(Kicker.Goal.STOP),
+                    kicker),
+                Commands.runEnd(
+                    () -> hopper.setGoal(Hopper.Goal.SHOOT),
+                    () -> hopper.setGoal(Hopper.Goal.STOP),
+                    hopper)));
 
-    TBC.x().onTrue(hood.zeroCommand());
+    TBC.povRight()
+        .onFalse(
+            Commands.parallel(
+                    Commands.runEnd(
+                        () -> kicker.setGoal(Kicker.Goal.OUTTAKE),
+                        () -> kicker.setGoal(Kicker.Goal.STOP),
+                        kicker),
+                    Commands.runEnd(
+                        () -> hopper.setGoal(Hopper.Goal.OUTTAKE),
+                        () -> hopper.setGoal(Hopper.Goal.STOP),
+                        hopper))
+                .withTimeout(0.5));
+
+    TBC.povLeft().whileTrue(hood.runCharacterizationCommand());
+
+    // TBC.povLeft()
+    //     .whileTrue(
+    //         compPathfindTo(
+    //             () ->
+    //                 ObjectDetection.getInstance()
+    //                     .getDensestFuelClusterPose()
+    //                     .orElse(RobotState.getInstance().getEstimatedPose())));
+
+    TBC.a().whileTrue(turret.runFixedCommand(() -> new Rotation2d(90), () -> 1));
+
+    // TBC.x().onTrue(hood.zeroCommand());
     // .alongWith(turret.zeroCommand()));
+    // TBC.x().whileTrue(
+    //     Commands.runEnd(
+    //         () -> turrethaha.setGoal(Intake.Goal.INTAKE),
+    //         () -> turrethaha.setGoal(Intake.Goal.STOP),
+    //         turrethaha)
+    // );
+    // TBC.leftBumper().whileTrue(
+    //     Commands.runEnd(
+    //         () -> turrethaha.setGoal(Intake.Goal.OUTTAKE),
+    //         () -> turrethaha.setGoal(Intake.Goal.STOP),
+    //         turrethaha)
+    // );
 
     TBC.b()
         .whileTrue(joystickFaceCommand(() -> AllianceFlipUtil.apply(FieldConstants.Hub.hubCenter)));
 
-    TBC.leftTrigger()
-        .onTrue(
-            Commands.either(
-                Commands.none(),
-                Commands.runOnce(() -> intakePivot.deploy(), intakePivot),
-                () -> intakePivot.isDeployed()));
+    // TBC.leftTrigger()
+    //     .onTrue(
+    //         Commands.either(
+    //             Commands.none(),
+    //             Commands.runOnce(() -> intakePivot.deploy(), intakePivot),
+    //             () -> intakePivot.isDeployed()));
 
     TBC.leftTrigger()
         .whileTrue(
-            Commands.startEnd(
-                () -> intake.setGoal(Intake.Goal.INTAKE),
-                () -> intake.setGoal(Intake.Goal.STOP),
-                intake));
+            Commands.either(
+                Commands.startEnd(
+                    () -> intake.setGoal(Intake.Goal.INTAKE),
+                    () -> intake.setGoal(Intake.Goal.STOP),
+                    intake),
+                Commands.none(),
+                () -> intakePivot.isDeployed()));
 
     TBC.rightTrigger()
         .whileTrue(
@@ -411,8 +521,32 @@ public class RobotContainer {
                 drive, () -> -TBC.getLeftY(), () -> -TBC.getLeftX()));
     TBC.rightTrigger()
         .and(() -> LaunchCalculator.getInstance().getParameters().isValid())
+        .and(() -> ignoreHubState.getAsBoolean() || hubActiveOrPassing.getAsBoolean())
         .and(inLaunchingTolerance)
-        .whileTrue(shootCommand);
+        .whileTrue(shootCommand());
+    TBC.rightTrigger()
+        .and(() -> !LaunchCalculator.getInstance().getParameters().passing())
+        .and(inLaunchingTolerance)
+        .onTrue(
+            Commands.runEnd(
+                    () -> secondary.setRumble(RumbleType.kBothRumble, 1.0),
+                    () -> secondary.setRumble(RumbleType.kBothRumble, 0.0))
+                .withTimeout(.5));
+    // Force launch (no tolerance checking)
+    TBC.rightTrigger()
+        .and(TBC.rightBumper())
+        .and(() -> ignoreHubState.getAsBoolean() || hubActiveOrPassing.getAsBoolean())
+        .whileTrue(
+            Commands.parallel(
+                    Commands.startEnd(
+                        () -> hopper.setGoal(Hopper.Goal.SHOOT),
+                        () -> hopper.setGoal(Hopper.Goal.STOP),
+                        hopper),
+                    Commands.startEnd(
+                        () -> kicker.setGoal(Kicker.Goal.SHOOT),
+                        () -> kicker.setGoal(Kicker.Goal.STOP),
+                        kicker))
+                .withInterruptBehavior(InterruptionBehavior.kCancelIncoming));
 
     TBC.leftBumper()
         .whileTrue(
@@ -422,13 +556,13 @@ public class RobotContainer {
                         FieldConstants.LeftTrench.getNearestLeftTrench(
                             getFuturePose(alignPredictionSeconds.get())))));
 
-    TBC.rightBumper()
-        .whileTrue(
-            joystickApproach(
-                () ->
-                    AllianceFlipUtil.apply(
-                        FieldConstants.RightTrench.getNearestRightTrench(
-                            getFuturePose(alignPredictionSeconds.get())))));
+    // TBC.rightBumper()
+    //     .whileTrue(
+    //         joystickApproach(
+    //             () ->
+    //                 AllianceFlipUtil.apply(
+    //                     FieldConstants.RightTrench.getNearestRightTrench(
+    //                         getFuturePose(alignPredictionSeconds.get())))));
 
     // TBC.a()
     //    .whileTrue(
@@ -457,38 +591,100 @@ public class RobotContainer {
                     passivePathfinding),
                 aggresivePathfinding));
 
-    TBC.RightPaddle()
-        .onTrue(leds.scheduleStateCommand(LEDs.State.PATHFINDING_AGGRESIVE))
-        .onFalse(leds.unscheduleStateCommand(LEDs.State.PATHFINDING_AGGRESIVE));
+    TBC.y().toggleOnTrue(flywheel.runFixedCommand(() -> 250));
 
-    TBC.y()
+    coast
         .onTrue(
             Commands.runOnce(
-                    () ->
-                        RobotState.getInstance()
-                            .resetPose(
-                                new Pose2d(
-                                    RobotState.getInstance().getEstimatedPose().getTranslation(),
-                                    AllianceFlipUtil.apply(Rotation2d.kZero))))
+                    () -> {
+                      if (DriverStation.isDisabled()) {
+                        coastOverride = true;
+                        // leds.scheduleStateCommand(LEDs.State.DISABLED);
+                      }
+                    })
+                .withName("Superstructure Coast")
+                .ignoringDisable(true))
+        .onFalse(
+            Commands.runOnce(
+                    () -> {
+                      coastOverride = false;
+                      // leds.scheduleStateCommand(LEDs.State.NONE);
+                    })
+                .withName("Superstructure Uncoast")
                 .ignoringDisable(true));
+
+    Timer teleopElapsedTimer = new Timer();
+    RobotModeTriggers.teleop()
+        .onTrue(
+            Commands.runOnce(
+                () -> {
+                  teleopElapsedTimer.restart();
+                }));
+    RobotModeTriggers.teleop()
+        .and(() -> !(DriverStation.getGameSpecificMessage().length() > 0))
+        .and(() -> HubShiftUtil.getAllianceWinOverride().isEmpty())
+        .and(() -> teleopElapsedTimer.hasElapsed(1.0))
+        .whileTrue(
+            Commands.runEnd(
+                () -> {
+                  TBC.setRumble(RumbleType.kBothRumble, 1);
+                  secondary.setRumble(RumbleType.kBothRumble, 1);
+                },
+                () -> {
+                  TBC.setRumble(RumbleType.kBothRumble, 0);
+                  secondary.setRumble(RumbleType.kBothRumble, 0);
+                }))
+        .whileTrue(
+            Commands.startEnd(() -> autoWinnerNotSet.set(true), () -> autoWinnerNotSet.set(false)));
+
+    // End-of-shift warning
+    for (int i = 1; i <= 5; i++) {
+      double time = i;
+      Trigger shiftAboutToEnd =
+          new Trigger(() -> (HubShiftUtil.getShiftedShiftInfo().remainingTime() < time));
+      shiftAboutToEnd
+          .and(RobotModeTriggers.teleop())
+          .and(ignoreHubState.negate())
+          .onTrue(
+              Commands.runEnd(
+                      () -> TBC.setRumble(RumbleType.kRightRumble, 1.0),
+                      () -> TBC.setRumble(RumbleType.kBothRumble, 0.0))
+                  .withTimeout(0.25));
+    }
   }
 
   private void configureLEDTriggers() {
-        isDisabled
-                .onTrue(leds.scheduleStateCommand(LEDs.State.DISABLED))
-                .onFalse(leds.unscheduleStateCommand(LEDs.State.DISABLED));
-        isAutonomous
-                .onTrue(leds.scheduleStateCommand(LEDs.State.RUNNING_AUTO))
-                .onFalse(leds.unscheduleStateCommand(LEDs.State.RUNNING_AUTO));
+    isDisabled
+        .onTrue(leds.scheduleStateCommand(LEDs.State.DISABLED))
+        .onFalse(leds.unscheduleStateCommand(LEDs.State.DISABLED));
+    isAutonomous
+        .onTrue(leds.scheduleStateCommand(LEDs.State.RUNNING_AUTO))
+        .onFalse(leds.unscheduleStateCommand(LEDs.State.RUNNING_AUTO));
 
-        new Trigger(() -> LaunchCalculator.getInstance().getParameters().isValid())
-                .onTrue(leds.scheduleStateCommand(LEDs.State.READY_TO_SHOOT))
-                .onFalse(leds.unscheduleStateCommand(LEDs.State.READY_TO_SHOOT));
+    new Trigger(() -> LaunchCalculator.getInstance().getParameters().isValid())
+        .onTrue(leds.scheduleStateCommand(LEDs.State.READY_TO_SHOOT))
+        .onFalse(leds.unscheduleStateCommand(LEDs.State.READY_TO_SHOOT));
 
-        new Trigger(() -> intake.getGoal() == Intake.Goal.INTAKE)
-                .onTrue(leds.scheduleStateCommand(LEDs.State.RUNNING_INTAKE))
-                .onFalse(leds.unscheduleStateCommand(LEDs.State.RUNNING_INTAKE));
-    }
+    new Trigger(() -> intake.getGoal() == Intake.Goal.INTAKE)
+        .onTrue(leds.scheduleStateCommand(LEDs.State.RUNNING_INTAKE))
+        .onFalse(leds.unscheduleStateCommand(LEDs.State.RUNNING_INTAKE));
+
+    new Trigger(() -> currentPathMode == PathMode.AGGRESSIVE)
+        .onTrue(leds.scheduleStateCommand(LEDs.State.PATHFINDING_AGGRESIVE))
+        .onFalse(leds.unscheduleStateCommand(LEDs.State.PATHFINDING_AGGRESIVE));
+
+    new Trigger(() -> currentPathMode == PathMode.MID)
+        .onTrue(leds.scheduleStateCommand(LEDs.State.PATHFINDING_MID))
+        .onFalse(leds.unscheduleStateCommand(LEDs.State.PATHFINDING_MID));
+
+    new Trigger(() -> currentPathMode == PathMode.PASSIVE)
+        .onTrue(leds.scheduleStateCommand(LEDs.State.PATHFINDING_PASSIVE))
+        .onFalse(leds.unscheduleStateCommand(LEDs.State.PATHFINDING_PASSIVE));
+
+    new Trigger(() -> currentPathMode == PathMode.FUEL)
+        .onTrue(leds.scheduleStateCommand(LEDs.State.PATHFINDING_FUEL))
+        .onFalse(leds.unscheduleStateCommand(LEDs.State.PATHFINDING_FUEL));
+  }
 
   private void registerNamedCommands() {
     switch (Constants.currentMode) {
@@ -498,44 +694,26 @@ public class RobotContainer {
         NamedCommands.registerCommand(
             "Shoot",
             Commands.parallel(
+                    Commands.sequence(
+                        Commands.waitSeconds(0.75),
+                        Commands.runEnd(
+                            () -> kicker.setGoal(Kicker.Goal.SHOOT),
+                            () -> kicker.setGoal(Kicker.Goal.STOP),
+                            kicker)),
                     Commands.runEnd(
-                        () ->
-                            joystickFaceCommand(
-                                () -> AllianceFlipUtil.apply(FieldConstants.Hub.hubCenter)),
-                        () ->
-                            joystickFaceCommand(
-                                () -> AllianceFlipUtil.apply(FieldConstants.Hub.hubCenter)),
-                        drive),
-                    Commands.startEnd(
                         () -> hopper.setGoal(Hopper.Goal.SHOOT),
                         () -> hopper.setGoal(Hopper.Goal.STOP),
                         hopper),
-                    Commands.startEnd(
-                        () -> kicker.setGoal(Kicker.Goal.SHOOT),
-                        () -> kicker.setGoal(Kicker.Goal.STOP),
-                        kicker),
-                    Commands.startEnd(
-                        () -> flywheel.runGoalCommand(), () -> flywheel.setGoal(0), flywheel))
-                .withTimeout(4));
+                    flywheel.runFixedCommand(() -> 2400))
+                .withTimeout(10));
 
-        // Intake Out
-        NamedCommands.registerCommand(
-            "IntakePivotOut", Commands.runOnce(() -> intakePivot.deploy(), intakePivot));
+        // // Intake Out
+        // NamedCommands.registerCommand(
+        //     "IntakePivotOut", Commands.runOnce(() -> intakePivot.deploy(), intakePivot));
 
-        // Intake In
-        NamedCommands.registerCommand(
-            "IntakePivotIn", Commands.runOnce(() -> intakePivot.deploy(), intakePivot));
-
-        // Intake Roll In And Pivot Out
-        NamedCommands.registerCommand(
-            "IntakePivotOutPlusIntake",
-            Commands.parallel(
-                    Commands.runOnce(() -> intakePivot.deploy(), intakePivot),
-                    Commands.startEnd(
-                        () -> intake.setGoal(Intake.Goal.INTAKE),
-                        () -> intake.setGoal(Intake.Goal.STOP),
-                        intake))
-                .withTimeout(0.25));
+        // // Intake In
+        // NamedCommands.registerCommand(
+        //     "IntakePivotIn", Commands.runOnce(() -> intakePivot.deploy(), intakePivot));
 
         // Intake Roll In
         NamedCommands.registerCommand(
@@ -544,7 +722,14 @@ public class RobotContainer {
                     () -> intake.setGoal(Intake.Goal.INTAKE),
                     () -> intake.setGoal(Intake.Goal.STOP),
                     intake)
-                .withTimeout(1.86));
+                .withTimeout(2.36));
+
+        NamedCommands.registerCommand(
+            "IntakeSlowOutpost",
+            Commands.startEnd(
+                () -> intake.setGoal(Intake.Goal.OUTPOST),
+                () -> intake.setGoal(Intake.Goal.STOP),
+                intake));
     }
   }
 
@@ -552,6 +737,7 @@ public class RobotContainer {
     SmartDashboard.putNumber("Match Time", DriverStation.getMatchTime());
     TBCDisconnected.set(!DriverStation.isJoystickConnected(TBC.getHID().getPort()));
     secondaryDisconnected.set(!DriverStation.isJoystickConnected(secondary.getHID().getPort()));
+    overrideDisconnected.set(!overrides.isConnected());
   }
 
   public void updateFuelCamera() {

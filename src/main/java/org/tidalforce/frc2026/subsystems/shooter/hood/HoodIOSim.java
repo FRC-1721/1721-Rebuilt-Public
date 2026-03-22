@@ -81,6 +81,10 @@ public class HoodIOSim implements HoodIO {
                 + (sim.getVelocityRadPerSec() - outputs.velocityRadsPerSec) * outputs.kD;
         currentControl = true;
       }
+      case OPEN_LOOP -> {
+        appliedVolts = outputs.appliedVoltage;
+        currentControl = false;
+      }
     }
   }
 }

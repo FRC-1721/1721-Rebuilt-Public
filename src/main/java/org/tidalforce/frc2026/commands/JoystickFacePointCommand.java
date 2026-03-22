@@ -44,7 +44,7 @@ public class JoystickFacePointCommand extends Command {
   private static final double DEADBAND = 0.1;
 
   private final TuneableProfiledPID angleController =
-      new TuneableProfiledPID("FacePointAngle", 9, 0.0, 0, 3.7, 4);
+      new TuneableProfiledPID("FacePointAngle", 1.75, 0.0, 0, 3.7, 0);
 
   public JoystickFacePointCommand(
       Drive drive,
@@ -78,7 +78,7 @@ public class JoystickFacePointCommand extends Command {
     // Vector from robot to target
     Translation2d robotToTarget = target.minus(currentPose.getTranslation());
 
-    Rotation2d offset = Rotation2d.fromRadians(0);
+    Rotation2d offset = Rotation2d.fromRadians(3 * Math.PI / 2);
 
     // Compute desired heading
     Rotation2d desiredHeading =

@@ -25,10 +25,9 @@
 
 package org.tidalforce.frc2026;
 
+import com.pathplanner.lib.commands.PathfindingCommand;
+import com.pathplanner.lib.pathfinding.Pathfinding;
 import edu.wpi.first.hal.AllianceStationID;
-import edu.wpi.first.math.MathShared;
-import edu.wpi.first.math.MathSharedStore;
-import edu.wpi.first.math.MathUsageId;
 import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.math.geometry.Translation3d;
 import edu.wpi.first.math.util.Units;
@@ -37,6 +36,7 @@ import edu.wpi.first.networktables.StructArrayPublisher;
 import edu.wpi.first.wpilibj.Alert;
 import edu.wpi.first.wpilibj.Alert.AlertType;
 import edu.wpi.first.wpilibj.DriverStation;
+// import edu.wpi.first.wpilibj.Filesystem;
 import edu.wpi.first.wpilibj.IterativeRobotBase;
 import edu.wpi.first.wpilibj.RobotController;
 import edu.wpi.first.wpilibj.Timer;
@@ -45,9 +45,13 @@ import edu.wpi.first.wpilibj.simulation.DriverStationSim;
 import edu.wpi.first.wpilibj.simulation.RoboRioSim;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.CommandScheduler;
+// import java.io.IOException;
 import java.lang.reflect.Field;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
+// import java.nio.file.Files;
+// import java.nio.file.Path;
+// import java.nio.file.StandardCopyOption;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.function.BiConsumer;
@@ -63,6 +67,7 @@ import org.tidalforce.frc2026.Constants.RobotType;
 import org.tidalforce.frc2026.subsystems.shooter.ShotCalculator;
 import org.tidalforce.frc2026.util.FuelSim;
 import org.tidalforce.frc2026.util.FullSubsystem;
+import org.tidalforce.frc2026.util.LocalADStarAK;
 import org.tidalforce.frc2026.util.LoggedTracer;
 import org.tidalforce.frc2026.util.VirtualSubsystem;
 
@@ -86,12 +91,20 @@ public class Robot extends LoggedRobot {
   public Robot() {
     super(Constants.loopPeriodSecs);
 
-    // Record metadata
+    /*--------------------------------------------------------------------------*/
+    /* AdvantageKit Metadata                                                    */
+    /*--------------------------------------------------------------------------*/
+
     Logger.recordMetadata("ProjectName", BuildConstants.MAVEN_NAME);
     Logger.recordMetadata("BuildDate", BuildConstants.BUILD_DATE);
     Logger.recordMetadata("GitSHA", BuildConstants.GIT_SHA);
     Logger.recordMetadata("GitDate", BuildConstants.GIT_DATE);
     Logger.recordMetadata("GitBranch", BuildConstants.GIT_BRANCH);
+
+    Logger.recordMetadata("Robot", Constants.robot.toString());
+    Logger.recordMetadata("Mode", Constants.getMode().toString());
+    Logger.recordMetadata("LoopPeriodSecs", Double.toString(Constants.loopPeriodSecs));
+
     Logger.recordMetadata(
         "GitDirty",
         switch (BuildConstants.DIRTY) {
@@ -99,11 +112,13 @@ public class Robot extends LoggedRobot {
           case 1 -> "Uncommitted changes";
           default -> "Unknown";
         });
+
     try {
       Logger.recordMetadata("Hostname", InetAddress.getLocalHost().getHostName());
     } catch (UnknownHostException e) {
       Logger.recordMetadata("Hostname", "Unknown");
     }
+
     Logger.recordMetadata(
         "Platform",
         "%s %s (%s)"
@@ -112,104 +127,130 @@ public class Robot extends LoggedRobot {
                 System.getProperty("os.version"),
                 System.getProperty("os.arch")));
 
-    // Set up data receivers & replay source
+    /*--------------------------------------------------------------------------*/
+    /* Logging Setup                                                            */
+    /*--------------------------------------------------------------------------*/
+
     switch (Constants.getMode()) {
       case REAL:
-        Logger.addDataReceiver(new WPILOGWriter());
+        // Log to USB stick
+        Logger.addDataReceiver(new WPILOGWriter("/U/logs"));
+
+        // Also publish to NetworkTables for AdvantageScope live viewing
         Logger.addDataReceiver(new NT4Publisher());
+
+        System.out.println("[AdvantageKit] Logging to /U/logs");
         break;
 
       case SIM:
-        // Running a physics simulator, log to NT
+        // Simulation only publishes to NT
         Logger.addDataReceiver(new NT4Publisher());
+        System.out.println("[AdvantageKit] Simulation logging via NT4");
         break;
 
       case REPLAY:
-        // Replaying a log, set up replay source
-        // String inPath = LogFileUtil.findReplayLog();
-        // String outPath = LogFileUtil.addPathSuffix(inPath, "_sim");
+        // Disable real-time timing so replay runs as fast as possible
+        setUseTiming(false);
+
+        // Automatically locate replay log
+        // String logPath = LogFileUtil.findReplayLog();
         String logPath = LogFileUtil.findReplayLog();
+
         Logger.setReplaySource(new WPILOGReader(logPath));
-        Logger.addDataReceiver(new WPILOGWriter(LogFileUtil.addPathSuffix(logPath, "_sim")));
+
+        // Write a new log with replay outputs
+        Logger.addDataReceiver(new WPILOGWriter(LogFileUtil.addPathSuffix(logPath, "_replay")));
+
+        System.out.println("[AdvantageKit] Replaying log:");
+        System.out.println(logPath);
         break;
     }
 
-    // Set timing mode
-    setUseTiming(false);
+    /*--------------------------------------------------------------------------*/
+    /* Start Logger                                                             */
+    /*--------------------------------------------------------------------------*/
 
-    // Start AdvantageKit logger
     Logger.start();
 
-    // Adjust loop overrun warning timeout
+    System.out.println("[AdvantageKit] Logger started");
+
+    /*--------------------------------------------------------------------------*/
+    /* Watchdog Configuration                                                   */
+    /*--------------------------------------------------------------------------*/
+
     try {
       Field watchdogField = IterativeRobotBase.class.getDeclaredField("m_watchdog");
       watchdogField.setAccessible(true);
       Watchdog watchdog = (Watchdog) watchdogField.get(this);
       watchdog.setTimeout(Constants.loopPeriodWatchdogSecs);
     } catch (Exception e) {
-      DriverStation.reportWarning("Failed to disable loop overrun warnings.", false);
+      DriverStation.reportWarning("Failed to adjust loop watchdog.", false);
     }
+
     CommandScheduler.getInstance().setPeriod(Constants.loopPeriodWatchdogSecs);
 
-    // Silence joystick alerts
+    /*--------------------------------------------------------------------------*/
+    /* Driver Station Settings                                                  */
+    /*--------------------------------------------------------------------------*/
+
     DriverStation.silenceJoystickConnectionWarning(true);
 
-    // Silence Rotation2d warnings
-    var mathShared = MathSharedStore.getMathShared();
-    MathSharedStore.setMathShared(
-        new MathShared() {
-          @Override
-          public void reportError(String error, StackTraceElement[] stackTrace) {
-            if (error.startsWith("x and y components of Rotation2d are zero")) {
-              return;
-            }
-            mathShared.reportError(error, stackTrace);
-          }
+    /*--------------------------------------------------------------------------*/
+    /* Command Logging                                                          */
+    /*--------------------------------------------------------------------------*/
 
-          @Override
-          public void reportUsage(MathUsageId id, int count) {
-            mathShared.reportUsage(id, count);
-          }
-
-          @Override
-          public double getTimestamp() {
-            return mathShared.getTimestamp();
-          }
-        });
-
-    // Log active commands
     Map<String, Integer> commandCounts = new HashMap<>();
+
     BiConsumer<Command, Boolean> logCommandFunction =
         (Command command, Boolean active) -> {
           String name = command.getName();
+
           int count = commandCounts.getOrDefault(name, 0) + (active ? 1 : -1);
           commandCounts.put(name, count);
+
           Logger.recordOutput(
               "CommandsUnique/" + name + "_" + Integer.toHexString(command.hashCode()), active);
+
           Logger.recordOutput("CommandsAll/" + name, count > 0);
         };
-    CommandScheduler.getInstance()
-        .onCommandInitialize((Command command) -> logCommandFunction.accept(command, true));
-    CommandScheduler.getInstance()
-        .onCommandFinish((Command command) -> logCommandFunction.accept(command, false));
-    CommandScheduler.getInstance()
-        .onCommandInterrupt((Command command) -> logCommandFunction.accept(command, false));
 
-    // Configure Driver Station for sim
+    CommandScheduler.getInstance()
+        .onCommandInitialize(command -> logCommandFunction.accept(command, true));
+
+    CommandScheduler.getInstance()
+        .onCommandFinish(command -> logCommandFunction.accept(command, false));
+
+    CommandScheduler.getInstance()
+        .onCommandInterrupt(command -> logCommandFunction.accept(command, false));
+
+    /*--------------------------------------------------------------------------*/
+    /* Simulation Setup                                                         */
+    /*--------------------------------------------------------------------------*/
+
     RoboRioSim.setTeamNumber(1721);
+
     if (Constants.robot == RobotType.SIM) {
       DriverStationSim.setAllianceStationId(AllianceStationID.Red1);
       DriverStationSim.notifyNewData();
     }
 
-    // Reset alert timers
+    /*--------------------------------------------------------------------------*/
+    /* Initialize Robot                                                         */
+    /*--------------------------------------------------------------------------*/
+
     disabledTimer.restart();
 
-    // Set up auto logging for RobotState
     AutoLogOutputManager.addObject(RobotState.getInstance());
 
-    // Instantiate RobotContainer
     robotContainer = new RobotContainer();
+
+    // Load default navgrid
+    // useNavgrid("navgrid_auto.json");
+
+    // Set AdvantageKit-compatible pathfinder
+    Pathfinding.setPathfinder(new LocalADStarAK());
+
+    PathfindingCommand.warmupCommand().schedule();
   }
 
   /** This function is called periodically during all modes. */
@@ -275,6 +316,20 @@ public class Robot extends LoggedRobot {
   public void disabledPeriodic() {}
 
   /** This autonomous runs the autonomous command selected by your {@link RobotContainer} class. */
+  // private void useNavgrid(String name) {
+  //   try {
+  //     Path deploy = Filesystem.getDeployDirectory().toPath();
+  //     Path src = deploy.resolve("pathplanner/" + name);
+  //     Path dest = deploy.resolve("pathplanner/navgrid.json");
+
+  //     Files.copy(src, dest, StandardCopyOption.REPLACE_EXISTING);
+
+  //     System.out.println("[PathPlanner] Loaded navgrid: " + name);
+  //   } catch (IOException e) {
+  //     DriverStation.reportError("Failed to load navgrid: " + name, e.getStackTrace());
+  //   }
+  // }
+
   @Override
   public void autonomousInit() {
     autoStart = Timer.getTimestamp();
@@ -292,6 +347,7 @@ public class Robot extends LoggedRobot {
   /** This function is called once when teleop is enabled. */
   @Override
   public void teleopInit() {
+
     if (autonomousCommand != null) {
       autonomousCommand.cancel();
     }
@@ -329,6 +385,9 @@ public class Robot extends LoggedRobot {
         NetworkTableInstance.getDefault()
             .getStructArrayTopic("FuelSim/Fuels", Translation3d.struct)
             .publish();
+
+    DriverStationSim.setEnabled(true);
+    DriverStationSim.setAutonomous(false);
   }
 
   /** This function is called periodically whilst in simulation. */

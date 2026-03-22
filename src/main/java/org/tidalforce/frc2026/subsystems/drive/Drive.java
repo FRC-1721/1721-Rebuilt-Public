@@ -77,6 +77,7 @@ import org.littletonrobotics.junction.Logger;
 import org.tidalforce.frc2026.RobotState;
 import org.tidalforce.frc2026.generated.TunerConstants;
 import org.tidalforce.frc2026.util.LocalADStarAK;
+import org.tidalforce.frc2026.util.LoggedTunableNumber;
 
 public class Drive extends SubsystemBase {
   // TunerConstants doesn't include these constants, so they are declared locally
@@ -91,8 +92,17 @@ public class Drive extends SubsystemBase {
               Math.hypot(TunerConstants.BackLeft.LocationX, TunerConstants.BackLeft.LocationY),
               Math.hypot(TunerConstants.BackRight.LocationX, TunerConstants.BackRight.LocationY)));
 
+  public static final LoggedTunableNumber kPTranslation =
+    new LoggedTunableNumber("PathPlanner/kP", 1.5);
+  public static final LoggedTunableNumber kDTranslation =
+    new LoggedTunableNumber("PathPlanner/kP", 0.0);
+  public static final LoggedTunableNumber kPRotation =
+    new LoggedTunableNumber("PathPlanner/kP", 1.0);
+  public static final LoggedTunableNumber kDRotation =
+    new LoggedTunableNumber("PathPlanner/kP", 0.2);
+
   // PathPlanner config constants
-  private static final double ROBOT_MASS_KG = 28.123;
+  private static final double ROBOT_MASS_KG = 49.9;
   private static final double ROBOT_MOI = 6.883;
   private static final double WHEEL_COF = 1.2;
   private static final RobotConfig PP_CONFIG =
@@ -164,8 +174,7 @@ public class Drive extends SubsystemBase {
         this::setPose,
         this::getChassisSpeeds,
         this::runVelocity,
-        new PPHolonomicDriveController(
-            new PIDConstants(5.0, 0.0, 0.0), new PIDConstants(5.0, 0.0, 0.0)),
+        new PPHolonomicDriveController(new PIDConstants(kPTranslation.get(), 0.0, kDTranslation.get()), new PIDConstants(kPRotation.get(), 0, kDRotation.get())),
         PP_CONFIG,
         () -> DriverStation.getAlliance().orElse(Alliance.Blue) == Alliance.Red,
         this);
@@ -320,7 +329,7 @@ public class Drive extends SubsystemBase {
    */
   public void runVelocity(ChassisSpeeds speeds) {
     // Calculate module setpoints
-    ChassisSpeeds discreteSpeeds = ChassisSpeeds.discretize(speeds, 0.02);
+    ChassisSpeeds discreteSpeeds = ChassisSpeeds.discretize(speeds, 0.05);
     SwerveModuleState[] setpointStates = kinematics.toSwerveModuleStates(discreteSpeeds);
     SwerveDriveKinematics.desaturateWheelSpeeds(setpointStates, TunerConstants.kSpeedAt12Volts);
 

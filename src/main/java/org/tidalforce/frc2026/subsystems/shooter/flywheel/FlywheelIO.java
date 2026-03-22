@@ -41,11 +41,12 @@ public interface FlywheelIO {
 
   public static class FlywheelIOOutputs {
     public double velocityRadsPerSec = 0.0;
-    public double appliedVoltage = 0.0;
     public double feedForward = 0.0;
     public boolean coast = true;
     public double kP = 0.0;
     public double kD = 0.0;
+    public double voltage = 0.0;
+    public boolean voltageMode = false;
   }
 
   default void updateInputs(FlywheelIOInputs inputs) {}
