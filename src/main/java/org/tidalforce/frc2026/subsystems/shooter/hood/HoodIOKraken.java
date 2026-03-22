@@ -27,25 +27,39 @@ package org.tidalforce.frc2026.subsystems.shooter.hood;
 
 import com.ctre.phoenix6.controls.VoltageOut;
 import com.ctre.phoenix6.hardware.TalonFX;
+import com.ctre.phoenix6.signals.NeutralModeValue;
 import edu.wpi.first.math.MathUtil;
 import edu.wpi.first.wpilibj.DriverStation;
 
 public class HoodIOKraken implements HoodIO {
   private final TalonFX motor;
-  private final VoltageOut voltageRequest = new VoltageOut(0.0);
+
+  private static final double GEAR_RATIO = 25.0; // TODO: tune this
+
+  private double getPositionRad() {
+    return (motor.getPosition().getValueAsDouble() / GEAR_RATIO) * 2.0 * Math.PI;
+  }
+
+  private double getVelocityRadPerSec() {
+    return (motor.getVelocity().getValueAsDouble() / GEAR_RATIO) * 2.0 * Math.PI;
+  }
 
   private double appliedVolts = 0.0;
 
   public HoodIOKraken(int motorId, String canBus) {
     motor = new TalonFX(motorId, canBus);
+
+    motor.setNeutralMode(NeutralModeValue.Brake);
+
+    motor.optimizeBusUtilization();
   }
 
   @Override
   public void updateInputs(HoodIOInputs inputs) {
     inputs.connected = motor.isAlive();
 
-    inputs.positionRads = motor.getPosition().getValueAsDouble() * 2.0 * Math.PI;
-    inputs.velocityRadsPerSec = motor.getVelocity().getValueAsDouble() * 2.0 * Math.PI;
+    inputs.positionRads = getPositionRad();
+    inputs.velocityRadsPerSec = getVelocityRadPerSec();
 
     inputs.appliedVoltage = appliedVolts;
     inputs.supplyCurrentAmps = motor.getSupplyCurrent().getValueAsDouble();
@@ -55,12 +69,63 @@ public class HoodIOKraken implements HoodIO {
 
   @Override
   public void applyOutputs(HoodIOOutputs outputs) {
+
     if (DriverStation.isDisabled()) {
       appliedVolts = 0.0;
-    } else {
-      appliedVolts = MathUtil.clamp(outputs.appliedVoltage, -12.0, 12.0);
+      motor.setControl(new VoltageOut(0.0));
+      return;
     }
 
-    motor.setControl(voltageRequest.withOutput(appliedVolts));
+    final double DIRECTION = -1.0;
+
+    switch (outputs.mode) {
+      case OPEN_LOOP:
+        appliedVolts = DIRECTION * outputs.appliedVoltage;
+        break;
+
+      case CLOSED_LOOP:
+        {
+          double position = getPositionRad();
+          double velocity = getVelocityRadPerSec();
+
+          double error = outputs.positionRad - position;
+
+          double pid = outputs.kP * error - outputs.kD * velocity;
+
+          appliedVolts = pid + outputs.feedforward;
+
+          appliedVolts *= DIRECTION;
+          break;
+        }
+
+      case CHARACTERIZATION:
+        {
+          double step = 0.02;
+          appliedVolts += step;
+          appliedVolts = MathUtil.clamp(appliedVolts, -2.0, 2.0);
+
+          if (Math.abs(getVelocityRadPerSec()) > 0.01) {
+            System.out.println("KS FOUND: " + appliedVolts);
+          }
+          break;
+        }
+
+      case BRAKE:
+      case COAST:
+      default:
+        appliedVolts = 0.0;
+        break;
+    }
+
+    // Safety clamp
+    appliedVolts = MathUtil.clamp(appliedVolts, -2.0, 2.0);
+
+    // Smooth ramp
+    double rampRate = 0.05;
+    double delta = appliedVolts - this.appliedVolts;
+    delta = MathUtil.clamp(delta, -rampRate, rampRate);
+    this.appliedVolts += delta;
+
+    motor.setControl(new VoltageOut(this.appliedVolts));
   }
 }

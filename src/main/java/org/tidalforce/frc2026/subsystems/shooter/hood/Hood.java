@@ -62,13 +62,13 @@ public class Hood extends FullSubsystem {
   private static final LoggedTunableNumber kG = new LoggedTunableNumber("Hood/kG");
   private static final LoggedTunableNumber kA = new LoggedTunableNumber("Hood/kA");
   private static final LoggedTunableNumber maxVelocityRadPerSec =
-      new LoggedTunableNumber("Hood/MaxVelocityRadPerSec", 60.0);
+      new LoggedTunableNumber("Hood/MaxVelocityRadPerSec", 75.0);
   private static final LoggedTunableNumber maxAccelerationRadPerSec2 =
-      new LoggedTunableNumber("Hood/MaxAccelerationRadPerSec2", 80.0);
+      new LoggedTunableNumber("Hood/MaxAccelerationRadPerSec2", 85.0);
 
   static {
-    kP.initDefault(30000);
-    kD.initDefault(300);
+    kP.initDefault(2);
+    kD.initDefault(0.1);
     kS.initDefault(0);
     kG.initDefault(0);
     kA.initDefault(0);
@@ -99,6 +99,14 @@ public class Hood extends FullSubsystem {
 
   private static double hoodOffset = 0.0;
   private boolean hoodZeroed = false;
+
+  private enum ControlMode {
+    PROFILED,
+    DIRECT,
+    OPEN_LOOP
+  }
+
+  private ControlMode controlMode = ControlMode.PROFILED;
 
   public Hood(HoodIO io) {
     this.io = io;
@@ -151,40 +159,63 @@ public class Hood extends FullSubsystem {
   @Override
   public void periodicAfterScheduler() {
     if (DriverStation.isEnabled()) {
-      // Clamp goal
-      var goalState =
-          new State(
-              MathUtil.clamp(goalAngle, minAngle, maxAngle),
-              MathUtil.clamp(goalVelocity, 0.0, maxVelocityRadPerSec.get()));
-      double previousVelocity = setpoint.velocity;
-      setpoint = profile.calculate(Constants.loopPeriodSecs, setpoint, goalState);
-      if (setpoint.position < minAngle || setpoint.position > maxAngle) {
-        setpoint =
-            new State(
-                MathUtil.clamp(setpoint.position, minAngle, maxAngle),
-                MathUtil.clamp(setpoint.velocity, 0.0, maxVelocityRadPerSec.get()));
+
+      switch (controlMode) {
+        case PROFILED -> {
+          var goalState =
+              new State(
+                  MathUtil.clamp(goalAngle, minAngle, maxAngle),
+                  MathUtil.clamp(goalVelocity, 0.0, maxVelocityRadPerSec.get()));
+
+          double previousVelocity = setpoint.velocity;
+          setpoint = profile.calculate(Constants.loopPeriodSecs, setpoint, goalState);
+
+          if (setpoint.position < minAngle || setpoint.position > maxAngle) {
+            setpoint =
+                new State(
+                    MathUtil.clamp(setpoint.position, minAngle, maxAngle),
+                    MathUtil.clamp(setpoint.velocity, 0.0, maxVelocityRadPerSec.get()));
+          }
+
+          atGoal =
+              EqualsUtil.epsilonEquals(setpoint.position, goalState.position)
+                  && EqualsUtil.epsilonEquals(setpoint.velocity, goalState.velocity);
+
+          double accel = (setpoint.velocity - previousVelocity) / Constants.loopPeriodSecs;
+
+          outputs.positionRad = setpoint.position - hoodOffset;
+          outputs.velocityRadsPerSec = setpoint.velocity;
+
+          outputs.feedforward =
+              kS.get() * Math.signum(setpoint.velocity)
+                  + kG.get() * Math.cos(setpoint.position)
+                  + kA.get() * accel;
+
+          outputs.mode = HoodIOOutputMode.CLOSED_LOOP;
+
+          Logger.recordOutput("Hood/Profile/SetpointPositionRad", setpoint.position);
+          Logger.recordOutput("Hood/Profile/SetpointVelocityRadPerSec", setpoint.velocity);
+          Logger.recordOutput("Hood/Profile/GoalPositionRad", goalState.position);
+          Logger.recordOutput("Hood/Profile/GoalVelocityRadPerSec", goalState.velocity);
+        }
+
+        case DIRECT -> {
+          double clamped = MathUtil.clamp(goalAngle, minAngle, maxAngle);
+
+          outputs.positionRad = clamped - hoodOffset;
+          outputs.velocityRadsPerSec = 0.0;
+
+          outputs.feedforward = kG.get() * Math.cos(clamped);
+
+          outputs.mode = HoodIOOutputMode.CLOSED_LOOP;
+
+          atGoal = Math.abs(getMeasuredAngleRad() - clamped) < 0.01;
+        }
+
+        case OPEN_LOOP -> {
+          outputs.mode = HoodIOOutputMode.OPEN_LOOP;
+        }
       }
-
-      // Check at goal
-      atGoal =
-          EqualsUtil.epsilonEquals(setpoint.position, goalState.position)
-              && EqualsUtil.epsilonEquals(setpoint.velocity, goalState.velocity);
-
-      // Run
-      double accel = (setpoint.velocity - previousVelocity) / Constants.loopPeriodSecs;
-      outputs.positionRad = setpoint.position - hoodOffset;
-      outputs.velocityRadsPerSec = setpoint.velocity;
-      outputs.feedforward =
-          kS.get() * Math.signum(setpoint.velocity)
-              + kG.get() * Math.cos(setpoint.position)
-              + kA.get() * accel;
-      outputs.mode = HoodIOOutputMode.CLOSED_LOOP;
-
-      // Log state
-      Logger.recordOutput("Hood/Profile/SetpointPositionRad", setpoint.position);
-      Logger.recordOutput("Hood/Profile/SetpointVelocityRadPerSec", setpoint.velocity);
-      Logger.recordOutput("Hood/Profile/GoalPositionRad", goalState.position);
-      Logger.recordOutput("Hood/Profile/GoalVelocityRadPerSec", goalState.velocity);
     }
 
     io.applyOutputs(outputs);
@@ -205,6 +236,14 @@ public class Hood extends FullSubsystem {
     hoodZeroed = true;
   }
 
+  public Command testVoltageCommand(DoubleSupplier volts) {
+    return run(
+        () -> {
+          outputs.mode = HoodIOOutputMode.OPEN_LOOP;
+          outputs.appliedVoltage = MathUtil.clamp(volts.getAsDouble(), -8.0, 8.0);
+        });
+  }
+
   public Command runTrackTargetCommand() {
     return run(
         () -> {
@@ -213,8 +252,40 @@ public class Hood extends FullSubsystem {
         });
   }
 
-  public Command runFixedCommand(DoubleSupplier angle, DoubleSupplier velocity) {
-    return run(() -> setGoalParams(angle.getAsDouble(), velocity.getAsDouble()));
+  public Command runProfiledCommand(DoubleSupplier angle, DoubleSupplier velocity) {
+    return run(
+        () -> {
+          controlMode = ControlMode.PROFILED;
+          setGoalParams(angle.getAsDouble(), velocity.getAsDouble());
+        });
+  }
+
+  public Command runDirectAngleCommand(DoubleSupplier angle) {
+    return run(
+        () -> {
+          controlMode = ControlMode.DIRECT;
+          goalAngle = angle.getAsDouble();
+        });
+  }
+
+  public Command jogCommand(DoubleSupplier input) {
+    return run(
+        () -> {
+          controlMode = ControlMode.DIRECT;
+
+          double speed = 0.02;
+          goalAngle += input.getAsDouble() * speed;
+
+          goalAngle = MathUtil.clamp(goalAngle, minAngle, maxAngle);
+        });
+  }
+
+  public Command runCharacterizationCommand() {
+    return run(
+        () -> {
+          controlMode = ControlMode.OPEN_LOOP; // prevent profile interference
+          outputs.mode = HoodIOOutputMode.CHARACTERIZATION;
+        });
   }
 
   public Command zeroCommand() {

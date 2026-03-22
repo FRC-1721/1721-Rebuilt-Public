@@ -26,7 +26,7 @@
 package org.tidalforce.frc2026.subsystems.shooter.hood;
 
 public final class HoodConstants {
-  public static final int HOODID = 3;
+  public static final int HOODID = 2;
 
   public static final String CAN_BUS = "rio"; // or "canivore"
 }

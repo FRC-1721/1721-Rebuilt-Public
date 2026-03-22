@@ -45,7 +45,8 @@ public interface HoodIO {
     BRAKE,
     COAST,
     CLOSED_LOOP,
-    OPEN_LOOP
+    OPEN_LOOP,
+    CHARACTERIZATION
   }
 
   public static class HoodIOOutputs {
