@@ -40,17 +40,22 @@ public class VisionIOPhotonVisionSim extends VisionIOPhotonVision {
 
   private final Supplier<Pose2d> poseSupplier;
   private final PhotonCameraSim cameraSim;
+  private final Supplier<Transform3d> robotToCameraSupplier;
 
   /**
    * Creates a new VisionIOPhotonVisionSim.
    *
    * @param name The name of the camera.
-   * @param poseSupplier Supplier for the robot pose to use in simulation.
+   * @param robotToCameraSupplier Supplier for robot->camera transform
+   * @param poseSupplier Supplier for robot pose
    */
   public VisionIOPhotonVisionSim(
-      String name, Transform3d robotToCamera, Supplier<Pose2d> poseSupplier) {
-    super(name, robotToCamera);
+      String name, Supplier<Transform3d> robotToCameraSupplier, Supplier<Pose2d> poseSupplier) {
+
+    super(name, robotToCameraSupplier);
+
     this.poseSupplier = poseSupplier;
+    this.robotToCameraSupplier = robotToCameraSupplier;
 
     // Initialize vision sim
     if (visionSim == null) {
@@ -61,12 +66,20 @@ public class VisionIOPhotonVisionSim extends VisionIOPhotonVision {
     // Add sim camera
     var cameraProperties = new SimCameraProperties();
     cameraSim = new PhotonCameraSim(camera, cameraProperties, aprilTagLayout);
-    visionSim.addCamera(cameraSim, robotToCamera);
+
+    // Initial transform (updated every loop later)
+    visionSim.addCamera(cameraSim, robotToCameraSupplier.get());
   }
 
   @Override
   public void updateInputs(VisionIOInputs inputs) {
+
+    // Update robot pose
     visionSim.update(poseSupplier.get());
+
+    // Update camera transform (turret rotation in sim)
+    visionSim.adjustCamera(cameraSim, robotToCameraSupplier.get());
+
     super.updateInputs(inputs);
   }
 }
