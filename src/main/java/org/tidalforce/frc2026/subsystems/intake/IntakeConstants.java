@@ -31,9 +31,9 @@ import edu.wpi.first.math.geometry.Transform3d;
 public class IntakeConstants {
   public static Transform3d robotToIntake = new Transform3d(0, 0, 0, Rotation3d.kZero);
 
-  public static final int INTAKEPIVOT_ID = 40;
-  public static final int IN_POSITION = 0;
-  public static final int OUT_POSITION = 1;
+  public static final int INTAKEPIVOT_ID = 41;
+  public static final double IN_POSITION = -0.2;
+  public static final int OUT_POSITION = -3;
 
   public static final String CAN_BUS = "rio"; // or "canivore"
 

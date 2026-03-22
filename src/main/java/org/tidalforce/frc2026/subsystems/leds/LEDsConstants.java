@@ -181,8 +181,7 @@ public class LEDsConstants {
       new SolidColor(FRONT_STRIP.startIndex, FRONT_STRIP.endIndex)
           .withColor(new RGBWColor(Color.kLightBlue));
 
-  public static final List<ControlRequest> solidBlueAnim =
-      List.of(candleSolidGreen, frontSolidGreen);
+  public static final List<ControlRequest> solidBlueAnim = List.of(candleSolidBlue, frontSolidBlue);
 
   public static final ControlRequest candleFade =
       new SingleFadeAnimation(CANDLE_LEDS.startIndex, CANDLE_LEDS.endIndex)
@@ -197,4 +196,16 @@ public class LEDsConstants {
           .withColor(new RGBWColor(Color.kGold));
 
   public static final List<ControlRequest> fadeAnimation = List.of(candleFade, frontFade);
+
+  // Solid Yellow
+  public static final ControlRequest candleSolidYellow =
+      new SolidColor(CANDLE_LEDS.startIndex, CANDLE_LEDS.endIndex)
+          .withColor(new RGBWColor(Color.kYellow));
+
+  public static final ControlRequest frontSolidYellow =
+      new SolidColor(FRONT_STRIP.startIndex, FRONT_STRIP.endIndex)
+          .withColor(new RGBWColor(Color.kYellow));
+
+  public static final List<ControlRequest> solidYellowAnim =
+      List.of(candleSolidYellow, frontSolidYellow);
 }
