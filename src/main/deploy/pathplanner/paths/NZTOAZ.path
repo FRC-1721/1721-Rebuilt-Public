@@ -8,8 +8,8 @@
       },
       "prevControl": null,
       "nextControl": {
-        "x": 7.047905844155845,
-        "y": 7.98103896103896
+        "x": 8.108035714285714,
+        "y": 7.841160714285714
       },
       "isLocked": false,
       "linkedName": "NZINTAKING"
@@ -20,8 +20,8 @@
         "y": 6.641152597402598
       },
       "prevControl": {
-        "x": 2.8957305194805194,
-        "y": 7.8926948051948065
+        "x": 2.8957269591418324,
+        "y": 7.893065972281787
       },
       "nextControl": null,
       "isLocked": false,
@@ -30,12 +30,12 @@
   ],
   "rotationTargets": [
     {
-      "waypointRelativePos": 0.43298969072164933,
-      "rotationDegrees": -112.9036883703396
+      "waypointRelativePos": 0.27828054298642535,
+      "rotationDegrees": 180.0
     },
     {
       "waypointRelativePos": 0.5649484536082471,
-      "rotationDegrees": -90.1685165126505
+      "rotationDegrees": 179.84902785405512
     }
   ],
   "constraintZones": [],
@@ -44,14 +44,14 @@
   "globalConstraints": {
     "maxVelocity": 3.0,
     "maxAcceleration": 3.0,
-    "maxAngularVelocity": 540.0,
-    "maxAngularAcceleration": 720.0,
+    "maxAngularVelocity": 360.0,
+    "maxAngularAcceleration": 540.0,
     "nominalVoltage": 12.0,
     "unlimited": false
   },
   "goalEndState": {
     "velocity": 0,
-    "rotation": -56.76047977580445
+    "rotation": -144.31708606912625
   },
   "reversed": false,
   "folder": null,

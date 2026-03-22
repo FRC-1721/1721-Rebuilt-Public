@@ -1,0 +1,49 @@
+{
+  "version": "2025.0",
+  "command": {
+    "type": "sequential",
+    "data": {
+      "commands": [
+        {
+          "type": "path",
+          "data": {
+            "pathName": "RightStartToNZ"
+          }
+        },
+        {
+          "type": "path",
+          "data": {
+            "pathName": "NZToRightAZ1"
+          }
+        },
+        {
+          "type": "named",
+          "data": {
+            "name": "Shoot"
+          }
+        },
+        {
+          "type": "path",
+          "data": {
+            "pathName": "AZRightToNZ"
+          }
+        },
+        {
+          "type": "path",
+          "data": {
+            "pathName": "FinalRight"
+          }
+        },
+        {
+          "type": "named",
+          "data": {
+            "name": "IntakeSlowOutpost"
+          }
+        }
+      ]
+    }
+  },
+  "resetOdom": true,
+  "folder": null,
+  "choreoAuto": false
+}
