@@ -52,10 +52,13 @@ public class LEDs extends SubsystemBase {
 
     DISABLED(0, LEDsConstants.disabledAnimation),
     RUNNING_AUTO(1, LEDsConstants.autoAnimation),
-    PATHFINDING_AGGRESIVE(2, LEDsConstants.solidBlueAnim),
     READY_TO_SHOOT(2, LEDsConstants.flashAnimation),
-    RUNNING_INTAKE(3, LEDsConstants.solidGreenAnim),
-    NONE(4, LEDsConstants.offAnimation);
+    PATHFINDING_AGGRESIVE(3, LEDsConstants.solidBlueAnim),
+    PATHFINDING_MID(3, LEDsConstants.solidBlueAnim),
+    PATHFINDING_PASSIVE(3, LEDsConstants.solidBlueAnim),
+    PATHFINDING_FUEL(3, LEDsConstants.solidYellowAnim),
+    RUNNING_INTAKE(4, LEDsConstants.solidGreenAnim),
+    NONE(5, LEDsConstants.fadeAnimation);
 
     // Lower priority first
     private final int priority;

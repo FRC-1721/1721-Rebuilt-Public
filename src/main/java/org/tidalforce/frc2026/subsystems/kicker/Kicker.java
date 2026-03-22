@@ -38,7 +38,7 @@ public class Kicker extends FullSubsystem {
   private static final LoggedTunableNumber rollerIntakeVolts =
       new LoggedTunableNumber("Kicker/Roller/IntakeVolts", 12.0);
   private static final LoggedTunableNumber rollerOuttakeVolts =
-      new LoggedTunableNumber("Kicker/Roller/OuttakeVolts", -8.0);
+      new LoggedTunableNumber("Kicker/Roller/OuttakeVolts", -6.0);
 
   private final RollerSystem roller;
 
