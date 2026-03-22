@@ -25,36 +25,63 @@
 
 package org.tidalforce.frc2026.subsystems.shooter.flywheel;
 
+import com.ctre.phoenix6.configs.TalonFXConfiguration;
+import com.ctre.phoenix6.controls.Follower;
+import com.ctre.phoenix6.controls.NeutralOut;
+import com.ctre.phoenix6.controls.VelocityVoltage;
 import com.ctre.phoenix6.controls.VoltageOut;
 import com.ctre.phoenix6.hardware.TalonFX;
 import com.ctre.phoenix6.signals.MotorAlignmentValue;
-import edu.wpi.first.math.MathUtil;
-import edu.wpi.first.wpilibj.DriverStation;
+import edu.wpi.first.math.util.Units;
 
 public class FlywheelIOKraken implements FlywheelIO {
+
   private final TalonFX master;
   private final TalonFX follower;
+
+  private final VelocityVoltage velocityRequest = new VelocityVoltage(0.0);
+  private final NeutralOut neutralRequest = new NeutralOut();
+  private final Follower followerRequest;
   private final VoltageOut voltageRequest = new VoltageOut(0.0);
 
-  private double appliedVolts = 0.0;
+  private final TalonFXConfiguration config = new TalonFXConfiguration();
+
+  // Track last applied PID so we don't spam CAN every loop
+  private double lastKP = Double.NaN;
+  private double lastKD = Double.NaN;
 
   public FlywheelIOKraken(int masterId, int followerId, String canBus) {
+
     master = new TalonFX(masterId, canBus);
     follower = new TalonFX(followerId, canBus);
 
-    // Make follower mirror master (same direction)
-    follower.setControl(
-        new com.ctre.phoenix6.controls.Follower(followerId, MotorAlignmentValue.Opposed));
+    // IMPORTANT:
+    // Use Opposed unless the motors are physically aligned
+    followerRequest = new Follower(masterId, MotorAlignmentValue.Opposed);
+
+    // Safe ramp to reduce belt shock during spinup
+    config.ClosedLoopRamps.VoltageClosedLoopRampPeriod = 0.2;
+
+    master.getConfigurator().apply(config);
+    follower.getConfigurator().apply(config);
+
+    // Set follower once
+    follower.setControl(followerRequest);
+
+    master.optimizeBusUtilization();
+    follower.optimizeBusUtilization();
   }
 
   @Override
   public void updateInputs(FlywheelIOInputs inputs) {
+
     inputs.connected = master.isAlive() && follower.isAlive();
 
-    inputs.positionRads = master.getPosition().getValueAsDouble() * 2.0 * Math.PI;
-    inputs.velocityRadsPerSec = master.getVelocity().getValueAsDouble() * 2.0 * Math.PI;
+    // Phoenix 6 reports rotations and rotations/sec
+    inputs.positionRads = Units.rotationsToRadians(master.getPosition().getValueAsDouble());
 
-    inputs.appliedVoltage = appliedVolts;
+    inputs.velocityRadsPerSec = Units.rotationsToRadians(master.getVelocity().getValueAsDouble());
+
     inputs.supplyCurrentAmps =
         master.getSupplyCurrent().getValueAsDouble()
             + follower.getSupplyCurrent().getValueAsDouble();
@@ -66,17 +93,35 @@ public class FlywheelIOKraken implements FlywheelIO {
     inputs.tempCelsius =
         Math.max(
             master.getDeviceTemp().getValueAsDouble(), follower.getDeviceTemp().getValueAsDouble());
+
+    inputs.appliedVoltage = master.getMotorVoltage().getValueAsDouble();
   }
 
   @Override
   public void applyOutputs(FlywheelIOOutputs outputs) {
-    if (DriverStation.isDisabled() || outputs.coast) {
-      appliedVolts = 0.0;
-    } else {
-      // Your sim uses PID internally — real hardware just takes voltage
-      appliedVolts = MathUtil.clamp(outputs.appliedVoltage, -12.0, 12.0);
+
+    if (outputs.coast) {
+      master.setControl(neutralRequest);
+      return;
     }
 
-    master.setControl(voltageRequest.withOutput(appliedVolts));
+    if (outputs.voltageMode) {
+      master.setControl(voltageRequest.withOutput(outputs.voltage));
+      return;
+    }
+
+    double rotationsPerSec = Units.radiansToRotations(outputs.velocityRadsPerSec);
+
+    if (outputs.kP != lastKP || outputs.kD != lastKD) {
+      config.Slot0.kP = outputs.kP;
+      config.Slot0.kD = outputs.kD;
+      master.getConfigurator().apply(config);
+
+      lastKP = outputs.kP;
+      lastKD = outputs.kD;
+    }
+
+    master.setControl(
+        velocityRequest.withVelocity(rotationsPerSec).withFeedForward(outputs.feedForward));
   }
 }

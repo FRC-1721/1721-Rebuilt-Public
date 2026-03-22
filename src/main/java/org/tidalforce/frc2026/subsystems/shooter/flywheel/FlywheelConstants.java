@@ -26,8 +26,8 @@
 package org.tidalforce.frc2026.subsystems.shooter.flywheel;
 
 public final class FlywheelConstants {
-  public static final int FYLWHEELIDMAINID = 1;
-  public static final int FLYWHEELFOLLOWID = 2;
+  public static final int FYLWHEELIDMAINID = 32;
+  public static final int FLYWHEELFOLLOWID = 33;
 
   public static final String CAN_BUS = "rio"; // or "canivore"
 }
