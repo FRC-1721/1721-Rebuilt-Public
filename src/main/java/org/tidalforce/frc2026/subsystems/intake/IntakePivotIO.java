@@ -29,9 +29,8 @@ import org.littletonrobotics.junction.AutoLog;
 
 public interface IntakePivotIO {
 
-  /** Inputs collected from the pivot motor (position, velocity, current, etc.) */
   @AutoLog
-  public static class IntakePivotIOInputs {
+  class IntakePivotIOInputs {
     public boolean connected;
     public double positionRads;
     public double velocityRadsPerSec;
@@ -41,23 +40,13 @@ public interface IntakePivotIO {
     public double tempCelsius;
   }
 
-  /** Outputs applied to the pivot motor (voltage, target position, brake mode) */
-  public static class IntakePivotIOOutputs {
+  class IntakePivotIOOutputs {
     public double appliedVoltage = 0.0;
     public double targetPositionRads = 0.0;
     public boolean brakeModeEnabled = true;
   }
 
-  /** Update the inputs from hardware into the input object */
   default void updateInputs(IntakePivotIOInputs inputs) {}
 
-  /** Apply outputs to the hardware */
   default void applyOutputs(IntakePivotIOOutputs outputs) {}
-
-  /** Convenience methods for two setpoints */
-  default void setIn() {}
-
-  default void setOut() {}
-
-  default void stop() {}
 }
