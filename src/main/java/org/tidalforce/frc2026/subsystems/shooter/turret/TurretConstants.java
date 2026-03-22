@@ -25,40 +25,8 @@
 
 package org.tidalforce.frc2026.subsystems.shooter.turret;
 
-import org.littletonrobotics.junction.AutoLog;
+public final class TurretConstants {
+  public static final int TURRET_ID = 3;
 
-public interface TurretIO {
-
-  @AutoLog
-  public static class TurretIOInputs {
-    boolean motorConnected = false;
-    double positionRads = 0.0;
-    double velocityRadsPerSec = 0.0;
-    double appliedVolts = 0.0;
-    double supplyCurrentAmps = 0.0;
-    double torqueCurrentAmps = 0.0;
-  }
-
-  public static enum TurretIOOutputMode {
-    BRAKE,
-    COAST,
-    CLOSED_LOOP,
-    OPEN_LOOP
-  }
-
-  public static class TurretIOOutputs {
-    public TurretIOOutputMode mode = TurretIOOutputMode.BRAKE;
-
-    public double position = 0.0;
-    public double velocity = 0.0;
-    public double kP = 0.0;
-    public double kD = 0.0;
-
-    // SYSID voltage control
-    public double voltage = 0.0;
-  }
-
-  public default void updateInputs(TurretIOInputs inputs) {}
-
-  public default void applyOutputs(TurretIOOutputs outputs) {}
+  public static final String CAN_BUS = "rio"; // or "canivore"
 }
