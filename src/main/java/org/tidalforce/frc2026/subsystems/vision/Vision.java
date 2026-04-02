@@ -152,10 +152,12 @@ public class Vision extends SubsystemBase {
         }
 
         // Send vision observation
-        consumer.accept(
-            observation.pose().toPose2d(),
-            observation.timestamp(),
-            VecBuilder.fill(linearStdDev, linearStdDev, angularStdDev));
+        if (!rejectPose && io[cameraIndex].isLocalization()) {
+          consumer.accept(
+              observation.pose().toPose2d(),
+              observation.timestamp(),
+              VecBuilder.fill(linearStdDev, linearStdDev, angularStdDev));
+        }
       }
 
       // Log camera datadata

@@ -39,7 +39,7 @@ import org.tidalforce.frc2026.Constants;
 public class VisionConstants {
   // AprilTag layout
   public static AprilTagFieldLayout aprilTagLayout =
-      AprilTagFieldLayout.loadField(AprilTagFields.kDefaultField);
+      AprilTagFieldLayout.loadField(AprilTagFields.k2026RebuiltAndymark);
 
   public static final double ambiguityThreshold = 0.4;
   public static final double targetLogTimeSecs = 0.1;
@@ -56,8 +56,8 @@ public class VisionConstants {
   private static double colorGain = 5.0;
 
   // Camera names, must match names configured on coprocessor
-  public static String camera0Name = "camera_0";
-  public static String camera1Name = "camera_1";
+  public static String targetingCamera = "camera_0";
+  public static String localizationCamera = "camera_1";
 
   // Robot to camera transforms
   // (Not used by Limelight, configure in web UI instead)

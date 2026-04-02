@@ -44,15 +44,19 @@ public class VisionIOPhotonVision implements VisionIO {
   /** Dynamic supplier because camera is mounted on a rotating turret */
   private final Supplier<Transform3d> robotToCameraSupplier;
 
+  private final boolean useForLocalization;
+
   /**
    * Creates a new VisionIOPhotonVision.
    *
    * @param name The configured name of the camera.
    * @param robotToCameraSupplier Supplier returning the robot->camera transform.
    */
-  public VisionIOPhotonVision(String name, Supplier<Transform3d> robotToCameraSupplier) {
+  public VisionIOPhotonVision(
+      String name, Supplier<Transform3d> robotToCameraSupplier, boolean useForLocalization) {
     camera = new PhotonCamera(name);
     this.robotToCameraSupplier = robotToCameraSupplier;
+    this.useForLocalization = useForLocalization;
   }
 
   @Override
@@ -157,5 +161,10 @@ public class VisionIOPhotonVision implements VisionIO {
     for (int id : tagIds) {
       inputs.tagIds[i++] = id;
     }
+  }
+
+  @Override
+  public boolean isLocalization() {
+    return useForLocalization;
   }
 }
