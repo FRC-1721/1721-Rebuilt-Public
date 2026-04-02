@@ -30,7 +30,6 @@ import com.ctre.phoenix6.configs.CANdleConfiguration;
 import com.ctre.phoenix6.controls.ControlRequest;
 import com.ctre.phoenix6.hardware.CANdle;
 import lombok.Getter;
-import org.tidalforce.frc2026.util.CANUpdateThread;
 import org.tidalforce.frc2026.util.Device;
 
 /** A lights implementation that uses a CANdle */
@@ -38,8 +37,6 @@ public class LightsIOCandle implements LightsIO {
   @Getter private final String name;
 
   private final CANdle candle;
-
-  private final CANUpdateThread updateThread = new CANUpdateThread();
 
   /**
    * Constructs a {@link LightsIOCandle} object with the specified name, CAN id, and configuration.
@@ -52,8 +49,6 @@ public class LightsIOCandle implements LightsIO {
     this.name = name;
 
     candle = new CANdle(id.id(), new CANBus(id.bus()));
-
-    updateThread.CTRECheckErrorAndRetry(() -> candle.getConfigurator().apply(config));
   }
 
   @Override
