@@ -36,9 +36,9 @@ import org.tidalforce.frc2026.util.LoggedTunableNumber;
 
 public class Intake extends FullSubsystem {
   private static final LoggedTunableNumber rollerIntakeVolts =
-      new LoggedTunableNumber("Intake/Roller/IntakeVolts", 4.0);
+      new LoggedTunableNumber("Intake/Roller/IntakeVolts", 5);
   private static final LoggedTunableNumber rollerOuttakeVolts =
-      new LoggedTunableNumber("Intake/Roller/OuttakeVolts", -4.0);
+      new LoggedTunableNumber("Intake/Roller/OuttakeVolts", -1.5);
   private static final LoggedTunableNumber rollerOutpostVolts =
       new LoggedTunableNumber("Intake/Roller/OutpostVolts", -0.2);
 
