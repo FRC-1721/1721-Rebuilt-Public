@@ -26,6 +26,7 @@
 package org.tidalforce.frc2026.subsystems.drive;
 
 import static edu.wpi.first.units.Units.MetersPerSecond;
+import static edu.wpi.first.units.Units.Second;
 import static edu.wpi.first.units.Units.Volts;
 
 import com.ctre.phoenix6.CANBus;
@@ -48,7 +49,6 @@ import edu.wpi.first.math.geometry.Pose3d;
 import edu.wpi.first.math.geometry.Rotation2d;
 import edu.wpi.first.math.geometry.Rotation3d;
 import edu.wpi.first.math.geometry.Translation2d;
-import edu.wpi.first.math.geometry.Translation3d;
 import edu.wpi.first.math.kinematics.ChassisSpeeds;
 import edu.wpi.first.math.kinematics.SwerveDriveKinematics;
 import edu.wpi.first.math.kinematics.SwerveModulePosition;
@@ -93,13 +93,13 @@ public class Drive extends SubsystemBase {
               Math.hypot(TunerConstants.BackRight.LocationX, TunerConstants.BackRight.LocationY)));
 
   public static final LoggedTunableNumber kPTranslation =
-    new LoggedTunableNumber("PathPlanner/kP", 1.5);
+      new LoggedTunableNumber("PathPlanner/kPTranslation", 5);
   public static final LoggedTunableNumber kDTranslation =
-    new LoggedTunableNumber("PathPlanner/kP", 0.0);
+      new LoggedTunableNumber("PathPlanner/kDTranslation", 0.2);
   public static final LoggedTunableNumber kPRotation =
-    new LoggedTunableNumber("PathPlanner/kP", 1.0);
+      new LoggedTunableNumber("PathPlanner/kPRotation", 5);
   public static final LoggedTunableNumber kDRotation =
-    new LoggedTunableNumber("PathPlanner/kP", 0.2);
+      new LoggedTunableNumber("PathPlanner/kDRotation", 0.2);
 
   // PathPlanner config constants
   private static final double ROBOT_MASS_KG = 49.9;
@@ -128,9 +128,18 @@ public class Drive extends SubsystemBase {
   private final GyroIO gyroIO;
   private final GyroIOInputsAutoLogged gyroInputs = new GyroIOInputsAutoLogged();
   private final Module[] modules = new Module[4]; // FL, FR, BL, BR
-  private final SysIdRoutine sysId;
+  private final SysIdRoutine sysIdDrive;
+  private final SysIdRoutine sysIDSteer;
   private final Alert gyroDisconnectedAlert =
       new Alert("Disconnected gyro, using kinematics as fallback.", AlertType.kError);
+
+  private PPHolonomicDriveController ppController = buildPPController();
+
+  private PPHolonomicDriveController buildPPController() {
+    return new PPHolonomicDriveController(
+        new PIDConstants(kPTranslation.get(), 0.0, kDTranslation.get()),
+        new PIDConstants(kPRotation.get(), 0.0, kDRotation.get()));
+  }
 
   private SwerveDriveKinematics kinematics = new SwerveDriveKinematics(getModuleTranslations());
   private Rotation2d rawGyroRotation = new Rotation2d();
@@ -174,7 +183,7 @@ public class Drive extends SubsystemBase {
         this::setPose,
         this::getChassisSpeeds,
         this::runVelocity,
-        new PPHolonomicDriveController(new PIDConstants(kPTranslation.get(), 0.0, kDTranslation.get()), new PIDConstants(kPRotation.get(), 0, kDRotation.get())),
+        ppController,
         PP_CONFIG,
         () -> DriverStation.getAlliance().orElse(Alliance.Blue) == Alliance.Red,
         this);
@@ -190,15 +199,41 @@ public class Drive extends SubsystemBase {
         });
 
     // Configure SysId
-    sysId =
+
+    // In the Drive constructor, replace the existing sysId instantiation:
+    sysIdDrive =
         new SysIdRoutine(
             new SysIdRoutine.Config(
-                null,
-                null,
-                null,
-                (state) -> Logger.recordOutput("Drive/SysIdState", state.toString())),
+                Volts.of(0.5).per(Second), // ramp rate: 0.5 V/s for quasistatic
+                Volts.of(3.0), // step voltage for dynamic test
+                Second.of(10.0), // timeout
+                (state) -> Logger.recordOutput("Drive/SysId/DriveState", state.toString())),
             new SysIdRoutine.Mechanism(
-                (voltage) -> runCharacterization(voltage.in(Volts)), null, this));
+                (voltage) -> {
+                  // Lock all modules to 0° and apply voltage to drive motors only
+                  for (var module : modules) {
+                    module.runSysIdDrive((voltage.in(Volts)));
+                  }
+                },
+                null,
+                this));
+
+    sysIDSteer =
+        new SysIdRoutine(
+            new SysIdRoutine.Config(
+                Volts.of(0.5).per(Second), // ramp rate
+                Volts.of(3.0), // step voltage
+                Second.of(10.0), // timeout
+                (state) -> Logger.recordOutput("Drive/SysId/SteerState", state.toString())),
+            new SysIdRoutine.Mechanism(
+                (voltage) -> {
+                  // Hold drive motors still, apply voltage to steer motors only
+                  for (var module : modules) {
+                    module.runSysIdSteer(voltage.in(Volts));
+                  }
+                },
+                null,
+                this));
 
     if (RobotBase.isSimulation()) {
       m_gyrosim = m_gryo.getSimState();
@@ -234,10 +269,10 @@ public class Drive extends SubsystemBase {
       // We multiply by the loop time (0.02s or 20ms) to get the delta angle for this cycle.
       m_gyrosim.addYaw(omegaDegreesPerSec * 0.020);
 
-      Pose2d simPose = getPose();
+      // Pose2d simPose = getPose();
 
-      // 1. Update RobotState with the simulated pose
-      RobotState.getInstance().resetPose(simPose);
+      // // 1. Update RobotState with the simulated pose
+      // RobotState.getInstance().resetPose(simPose);
     }
   }
 
@@ -252,74 +287,76 @@ public class Drive extends SubsystemBase {
       module.periodic();
     }
 
-    // === ODOMETRY UPDATE LOOP STAYS INSIDE LOCK ===
+    // Cache the FULL array reference inside the lock, not just the length.
+    // The odometry thread cannot replace these arrays while we hold the lock,
+    // and after we release it we use our local references only — never the
+    // getters — so there is no race condition.
     double[] sampleTimestamps = modules[0].getOdometryTimestamps();
     int sampleCount = sampleTimestamps.length;
 
-    for (int i = 0; i < sampleCount; i++) {
-      rawGyroRotation = getRotation2d();
-      poseEstimator.updateWithTime(sampleTimestamps[i], rawGyroRotation, lastModulePositions);
+    // Cache per-module position arrays and gyro samples while lock is still held
+    SwerveModulePosition[][] allModulePositions = new SwerveModulePosition[4][];
+    for (int moduleIndex = 0; moduleIndex < 4; moduleIndex++) {
+      allModulePositions[moduleIndex] = modules[moduleIndex].getOdometryPositions();
     }
 
+    // Cache gyro samples — same reasoning
+    Rotation2d[] gyroSamples = gyroInputs.odometryYawPositions;
+
     odometryLock.unlock();
+    // ── Lock released — use only cached references below, never getters ──
 
-    // Visualization/logging AFTER unlock
-    m_field.setRobotPose(getPose());
-
-    // Stop moving when disabled
     if (DriverStation.isDisabled()) {
       for (var module : modules) {
         module.stop();
       }
-    }
-
-    // Log empty setpoint states when disabled
-    if (DriverStation.isDisabled()) {
       Logger.recordOutput("SwerveStates/Setpoints", new SwerveModuleState[] {});
       Logger.recordOutput("SwerveStates/SetpointsOptimized", new SwerveModuleState[] {});
     }
 
-    // Update odometry
+    // ── Single correct odometry update loop ──────────────────────────────
     for (int i = 0; i < sampleCount; i++) {
-      // Read wheel positions and deltas from each module
       SwerveModulePosition[] modulePositions = new SwerveModulePosition[4];
-      SwerveModulePosition[] moduleDeltas = new SwerveModulePosition[4];
       for (int moduleIndex = 0; moduleIndex < 4; moduleIndex++) {
-        modulePositions[moduleIndex] = modules[moduleIndex].getOdometryPositions()[i];
-        moduleDeltas[moduleIndex] =
-            new SwerveModulePosition(
-                modulePositions[moduleIndex].distanceMeters
-                    - lastModulePositions[moduleIndex].distanceMeters,
-                modulePositions[moduleIndex].angle);
+        // Guard against mismatched array lengths between modules
+        if (i < allModulePositions[moduleIndex].length) {
+          modulePositions[moduleIndex] = allModulePositions[moduleIndex][i];
+        } else {
+          modulePositions[moduleIndex] = lastModulePositions[moduleIndex];
+        }
         lastModulePositions[moduleIndex] = modulePositions[moduleIndex];
       }
 
-      // Update gyro angle
-      rawGyroRotation = getRotation2d();
+      // Use per-sample gyro angle — eliminates accumulated heading drift.
+      // Falls back to the latest reading if gyro queue ran short.
+      if (gyroInputs.connected && gyroSamples != null && i < gyroSamples.length) {
+        rawGyroRotation = gyroSamples[i];
+      } else {
+        rawGyroRotation = gyroInputs.yawPosition;
+      }
 
-      // Apply update
-      poseEstimator.updateWithTime(sampleTimestamps[i], rawGyroRotation, modulePositions);
+      poseEstimator.updateWithTime(
+          sampleTimestamps[i], // use cached reference, not the getter
+          rawGyroRotation,
+          modulePositions);
+    }
+
+    // Visualization, alerts, RobotState, logging below — unchanged
+    m_field.setRobotPose(getPose());
+    gyroDisconnectedAlert.set(!gyroInputs.connected && !RobotBase.isSimulation());
+    RobotState.getInstance().resetPose(getPose());
+
+    if (kPTranslation.hasChanged(hashCode())
+        || kDTranslation.hasChanged(hashCode())
+        || kPRotation.hasChanged(hashCode())
+        || kDRotation.hasChanged(hashCode())) {
+      ppController = buildPPController();
     }
 
     Pose2d pose = getPose();
-    Pose3d pose3d = new Pose3d(pose.getX(), pose.getY(), 0.0, new Rotation3d(pose.getRotation()));
-    Pose3d elevatorPose3d =
-        new Pose3d(new Translation3d(0.0, 0.0, 0.0), new Rotation3d(0.0, 0.0, 0.0));
-    Pose3d intakePose3d =
-        new Pose3d(new Translation3d(0.0, 0.0, 0.0), new Rotation3d(0.0, 0.0, 0.0));
-
-    // Update gyro alert
-    boolean gyroAvailable = gyroInputs.connected || (RobotBase.isSimulation() && m_gyrosim != null);
-
-    gyroDisconnectedAlert.set(!gyroAvailable && !RobotBase.isSimulation());
-
-    // Update RobotState for the turret and other subsystems
-    Pose2d currentPose = getPose();
-    RobotState.getInstance()
-        .resetPose(currentPose); // or addOdometryObservation if you want history
-
-    Logger.recordOutput("Odometry/Robot3d", pose3d);
-    Logger.recordOutput("Robot/ComponentPoses", new Pose3d[] {elevatorPose3d, intakePose3d});
+    Logger.recordOutput(
+        "Odometry/Robot3d",
+        new Pose3d(pose.getX(), pose.getY(), 0.0, new Rotation3d(pose.getRotation())));
   }
 
   /**
@@ -371,16 +408,49 @@ public class Drive extends SubsystemBase {
     stop();
   }
 
-  /** Returns a command to run a quasistatic test in the specified direction. */
-  public Command sysIdQuasistatic(SysIdRoutine.Direction direction) {
-    return run(() -> runCharacterization(0.0))
+  // Drive characterization commands — bind these to controller buttons
+  public Command sysIdDriveQuasistatic(SysIdRoutine.Direction direction) {
+    return run(() -> {
+          for (var module : modules) {
+            module.runSysIdDrive(0.0); // pre-orient wheels forward
+          }
+        })
         .withTimeout(1.0)
-        .andThen(sysId.quasistatic(direction));
+        .andThen(sysIdDrive.quasistatic(direction))
+        .withName("SysId Drive Quasistatic " + direction);
   }
 
-  /** Returns a command to run a dynamic test in the specified direction. */
-  public Command sysIdDynamic(SysIdRoutine.Direction direction) {
-    return run(() -> runCharacterization(0.0)).withTimeout(1.0).andThen(sysId.dynamic(direction));
+  public Command sysIdDriveDynamic(SysIdRoutine.Direction direction) {
+    return run(() -> {
+          for (var module : modules) {
+            module.runSysIdDrive(0.0);
+          }
+        })
+        .withTimeout(1.0)
+        .andThen(sysIdDrive.dynamic(direction))
+        .withName("SysId Drive Dynamic " + direction);
+  }
+
+  public Command sysIdSteerQuasistatic(SysIdRoutine.Direction direction) {
+    return run(() -> {
+          for (var module : modules) {
+            module.runSysIdSteer(0.0);
+          }
+        })
+        .withTimeout(1.0)
+        .andThen(sysIDSteer.quasistatic(direction))
+        .withName("SysId Steer Quasistatic " + direction);
+  }
+
+  public Command sysIdSteerDynamic(SysIdRoutine.Direction direction) {
+    return run(() -> {
+          for (var module : modules) {
+            module.runSysIdSteer(0.0);
+          }
+        })
+        .withTimeout(1.0)
+        .andThen(sysIDSteer.dynamic(direction))
+        .withName("SysId Steer Dynamic " + direction);
   }
 
   /** Returns the module states (turn angles and drive velocities) for all of the modules. */

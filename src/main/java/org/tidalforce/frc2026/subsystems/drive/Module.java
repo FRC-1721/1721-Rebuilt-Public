@@ -106,6 +106,26 @@ public class Module {
     io.setTurnPosition(new Rotation2d());
   }
 
+  // Add to Module.java:
+
+  /**
+   * Runs the drive motor at the given voltage with steer locked to 0°. Used by SysId drive
+   * characterization.
+   */
+  public void runSysIdDrive(double volts) {
+    io.setTurnPosition(Rotation2d.kZero); // lock wheels forward
+    io.setDriveOpenLoop(volts);
+  }
+
+  /**
+   * Runs the steer motor at the given voltage with drive stopped. Used by SysId steer
+   * characterization.
+   */
+  public void runSysIdSteer(double volts) {
+    io.setDriveOpenLoop(0.0);
+    io.setTurnOpenLoop(volts);
+  }
+
   /** Disables all outputs to motors. */
   public void stop() {
     io.setDriveOpenLoop(0.0);
