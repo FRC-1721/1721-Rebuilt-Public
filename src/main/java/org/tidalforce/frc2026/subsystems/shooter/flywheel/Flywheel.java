@@ -38,7 +38,7 @@ import org.littletonrobotics.junction.AutoLogOutput;
 import org.littletonrobotics.junction.Logger;
 import org.tidalforce.frc2026.Constants;
 import org.tidalforce.frc2026.Robot;
-import org.tidalforce.frc2026.subsystems.shooter.ShotCalculator;
+import org.tidalforce.frc2026.subsystems.shooter.LaunchCalculator;
 import org.tidalforce.frc2026.subsystems.shooter.flywheel.FlywheelIO.FlywheelIOOutputs;
 import org.tidalforce.frc2026.util.EqualsUtil;
 import org.tidalforce.frc2026.util.FullSubsystem;
@@ -178,7 +178,15 @@ public class Flywheel extends FullSubsystem {
 
   public Command runTrackTargetCommand() {
     return runEnd(
-        () -> runVelocity(ShotCalculator.getInstance().getParameters().flywheelSpeed()),
+        () -> {
+          var params = LaunchCalculator.getInstance().getParameters();
+
+          Logger.recordOutput("Debug/FlywheelSpeed", params.flywheelSpeed());
+          Logger.recordOutput("Debug/TurretAngle", params.turretAngle());
+          Logger.recordOutput("Debug/HoodAngle", params.hoodAngle());
+
+          runVelocity(LaunchCalculator.getInstance().getParameters().flywheelSpeed());
+        },
         this::stop);
   }
 

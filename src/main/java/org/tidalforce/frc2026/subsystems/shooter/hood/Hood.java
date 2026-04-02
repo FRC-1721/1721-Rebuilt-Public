@@ -25,274 +25,279 @@
 
 package org.tidalforce.frc2026.subsystems.shooter.hood;
 
-import edu.wpi.first.math.MathUtil;
-import edu.wpi.first.math.filter.Debouncer;
 import edu.wpi.first.math.geometry.Rotation2d;
-import edu.wpi.first.math.trajectory.TrapezoidProfile;
-import edu.wpi.first.math.trajectory.TrapezoidProfile.State;
-import edu.wpi.first.math.util.Units;
 import edu.wpi.first.wpilibj.Alert;
-import edu.wpi.first.wpilibj.DriverStation;
+import edu.wpi.first.wpilibj.Timer;
 import edu.wpi.first.wpilibj2.command.Command;
+import edu.wpi.first.wpilibj2.command.Commands;
+import edu.wpi.first.wpilibj2.command.SubsystemBase;
 import java.util.function.BooleanSupplier;
-import java.util.function.DoubleSupplier;
+import java.util.function.Supplier;
 import lombok.Getter;
-import lombok.Setter;
-import lombok.experimental.Accessors;
 import org.littletonrobotics.junction.AutoLogOutput;
 import org.littletonrobotics.junction.Logger;
-import org.tidalforce.frc2026.Constants;
-import org.tidalforce.frc2026.DevBotMech3d;
-import org.tidalforce.frc2026.Robot;
-import org.tidalforce.frc2026.subsystems.shooter.ShotCalculator;
-import org.tidalforce.frc2026.subsystems.shooter.hood.HoodIO.HoodIOOutputMode;
-import org.tidalforce.frc2026.subsystems.shooter.hood.HoodIO.HoodIOOutputs;
-import org.tidalforce.frc2026.util.EqualsUtil;
-import org.tidalforce.frc2026.util.FullSubsystem;
-import org.tidalforce.frc2026.util.LoggedTracer;
+import org.tidalforce.frc2026.subsystems.shooter.LaunchCalculator;
 import org.tidalforce.frc2026.util.LoggedTunableNumber;
 
-public class Hood extends FullSubsystem {
-  public static final double minAngle = Units.degreesToRadians(10);
-  public static final double maxAngle = Units.degreesToRadians(38);
+public class Hood extends SubsystemBase {
 
-  private static final LoggedTunableNumber kP = new LoggedTunableNumber("Hood/kP");
-  private static final LoggedTunableNumber kD = new LoggedTunableNumber("Hood/kD");
-  private static final LoggedTunableNumber kS = new LoggedTunableNumber("Hood/kS");
-  private static final LoggedTunableNumber kG = new LoggedTunableNumber("Hood/kG");
-  private static final LoggedTunableNumber kA = new LoggedTunableNumber("Hood/kA");
-  private static final LoggedTunableNumber maxVelocityRadPerSec =
-      new LoggedTunableNumber("Hood/MaxVelocityRadPerSec", 75.0);
-  private static final LoggedTunableNumber maxAccelerationRadPerSec2 =
-      new LoggedTunableNumber("Hood/MaxAccelerationRadPerSec2", 85.0);
+  // ── Single source of truth for all gains ────────────────────────────────
+  // These are the ONLY place gain values live. HoodConstants has no gains.
+  // Change the default values here. They load into NetworkTables on boot
+  // and can be edited live from Glass during testing.
+  //
+  // HOW TO TUNE:
+  //   kP  — Raise until oscillation, back off ~30%. Expect final: 40-80.
+  //   kD  — Raise after kP is set to damp oscillation. Expect final: 1-3.
+  //   kS  — Raise if hood doesn't reach setpoint on small moves. Max ~1.0.
+  //   kG  — Tune with hoodHoldHorizontal() command. Raise if hood sags.
+  //   kV  — Leave at placeholder until SysId characterization is run.
+  //   kA  — Leave at placeholder until SysId characterization is run.
+  //
+  // HOW TO CHANGE SPEED:
+  //   Faster overall:    raise MM_CruiseVelocityRPS (try 5.0 → 10.0)
+  //   Faster ramp-up:    raise MM_AccelerationRPS2 (keep at 2-4x cruise)
+  //   Smoother start:    raise MM_JerkRPS3 from 0 (try 200)
+  //   Still too slow:    raise PeakForwardVoltage in HoodIOKraken toward 12.0
+  private static final LoggedTunableNumber kP = new LoggedTunableNumber("Hood/kP", 20.0);
+  private static final LoggedTunableNumber kD = new LoggedTunableNumber("Hood/kD", 0.5);
+  private static final LoggedTunableNumber kS = new LoggedTunableNumber("Hood/kS", 0.2);
+  private static final LoggedTunableNumber kG = new LoggedTunableNumber("Hood/kG", 0.3);
+  private static final LoggedTunableNumber kV = new LoggedTunableNumber("Hood/kV", 0.12);
+  private static final LoggedTunableNumber kA = new LoggedTunableNumber("Hood/kA", 0.01);
+  private static final LoggedTunableNumber mmCruise =
+      new LoggedTunableNumber("Hood/MM_CruiseVelocityRPS", 2.0);
+  private static final LoggedTunableNumber mmAccel =
+      new LoggedTunableNumber("Hood/MM_AccelerationRPS2", 6.0);
+  private static final LoggedTunableNumber mmJerk =
+      new LoggedTunableNumber("Hood/MM_JerkRPS3", 0.0);
+  private static final int GainsID = 10;
+  private static final int ProfileID = 11;
 
-  static {
-    kP.initDefault(2);
-    kD.initDefault(0.1);
-    kS.initDefault(0);
-    kG.initDefault(0);
-    kA.initDefault(0);
+  // ── Goal state machine ───────────────────────────────────────────────────
+  public enum Goal {
+    TRACK_TARGET,
+    FIXED,
+    ZEROING,
+    ZEROED,
+    OPEN_LOOP_TEST,
+    IDLE
   }
 
+  @Getter @AutoLogOutput private Goal goal = Goal.IDLE;
+  @Getter @AutoLogOutput private Rotation2d setpoint = HoodConstants.MIN_ANGLE;
+
+  private boolean zeroed = false;
+  private BooleanSupplier coastOverride = () -> false;
+  private double testVoltage = 0.0;
+  private double hoodOffsetRads = 0.0;
+  private double lastGoalAngleRads = 0.0;
+
+  private boolean hoodZeroed = false;
+  private final Timer zeroStallTimer = new Timer();
+
+  // ── IO ───────────────────────────────────────────────────────────────────
   private final HoodIO io;
   private final HoodIOInputsAutoLogged inputs = new HoodIOInputsAutoLogged();
-  private final HoodIOOutputs outputs = new HoodIOOutputs();
 
-  // Connected debouncer
-  private final Debouncer motorConnectedDebouncer =
-      new Debouncer(0.5, Debouncer.DebounceType.kFalling);
-  private final Alert motorDisconnectedAlert =
-      new Alert("Hood motor disconnected!", Alert.AlertType.kWarning);
-
-  @Setter private BooleanSupplier coastOverride = () -> false;
-
-  private TrapezoidProfile profile;
-  @Getter private State setpoint = new State();
-
-  @Getter
-  @Accessors(fluent = true)
-  @AutoLogOutput(key = "Hood/Profile/AtGoal")
-  private boolean atGoal = false;
-
-  private double goalAngle = 0.0;
-  private double goalVelocity = 0.0;
-
-  private static double hoodOffset = 0.0;
-  private boolean hoodZeroed = false;
-
-  private enum ControlMode {
-    PROFILED,
-    DIRECT,
-    OPEN_LOOP
-  }
-
-  private ControlMode controlMode = ControlMode.PROFILED;
+  // ── Alerts ───────────────────────────────────────────────────────────────
+  private final Alert faultAlert =
+      new Alert("Hood motor has active faults — check Tuner X", Alert.AlertType.kError);
+  private final Alert notZeroedAlert =
+      new Alert(
+          "Hood has not been zeroed — run zero sequence before shooting", Alert.AlertType.kWarning);
 
   public Hood(HoodIO io) {
     this.io = io;
-
-    profile =
-        new TrapezoidProfile(
-            new TrapezoidProfile.Constraints(
-                maxVelocityRadPerSec.get(), maxAccelerationRadPerSec2.get()));
   }
 
+  // ── Periodic ─────────────────────────────────────────────────────────────
+
+  @Override
   public void periodic() {
     io.updateInputs(inputs);
     Logger.processInputs("Hood", inputs);
 
-    motorDisconnectedAlert.set(
-        Robot.showHardwareAlerts() && !motorConnectedDebouncer.calculate(inputs.connected));
+    // ── Push gains to motor ──────────────────────────────────────────────
+    // On first loop: gainsInitialized is false, so we always push once.
+    // After that: only push when a NT value actually changed in Glass.
+    // This guarantees the motor always reflects NT values, never stale
+    // constructor values from HoodIOKraken.
+    LoggedTunableNumber.ifChanged(
+        GainsID,
+        values -> io.reconfigureGains(kP.get(), kD.get(), kS.get(), kG.get(), kV.get(), kA.get()));
+    LoggedTunableNumber.ifChanged(
+        ProfileID, values -> io.reconfigureProfile(mmCruise.get(), mmAccel.get(), mmJerk.get()));
 
-    // Stop when disabled
-    if (DriverStation.isDisabled() || (!hoodZeroed && outputs.mode != HoodIOOutputMode.OPEN_LOOP)) {
-      outputs.mode = HoodIOOutputMode.BRAKE;
+    // ── Coast override when disabled ─────────────────────────────────────
+    io.setBrakeMode(!coastOverride.getAsBoolean());
 
-      if (coastOverride.getAsBoolean()) {
-        outputs.mode = HoodIOOutputMode.COAST;
+    // ── Goal state machine ───────────────────────────────────────────────
+    switch (goal) {
+      case OPEN_LOOP_TEST -> io.setVoltage(testVoltage);
+      case ZEROING -> runZeroing();
+      case ZEROED, FIXED, TRACK_TARGET -> {
+        double clamped =
+            Math.max(
+                HoodConstants.MIN_ANGLE.getRotations(),
+                Math.min(HoodConstants.MAX_ANGLE.getRotations(), setpoint.getRotations()));
+        io.setPosition(clamped);
       }
+      case IDLE -> io.setVoltage(0.0);
     }
 
-    // Update tunable numbers
-    outputs.kP = kP.get();
-    outputs.kD = kD.get();
+    // ── Alerts ───────────────────────────────────────────────────────────
+    faultAlert.set(inputs.stickyFaultAny);
+    notZeroedAlert.set(!zeroed);
 
-    if (maxVelocityRadPerSec.hasChanged(hashCode())
-        || maxAccelerationRadPerSec2.hasChanged(hashCode())) {
-      profile =
-          new TrapezoidProfile(
-              new TrapezoidProfile.Constraints(
-                  maxVelocityRadPerSec.get(), maxAccelerationRadPerSec2.get()));
+    // ── Logging ──────────────────────────────────────────────────────────
+    Logger.recordOutput("Hood/SetpointDeg", setpoint.getDegrees());
+    Logger.recordOutput("Hood/PositionDeg", inputs.position.getDegrees());
+    Logger.recordOutput("Hood/AtGoal", atGoal());
+    Logger.recordOutput("Hood/Zeroed", zeroed);
+  }
+
+  private void runZeroing() {
+    // Drive slowly into the lower hard stop (-30° side).
+    // ZERO_VOLTAGE is negative so it moves in the correct direction.
+    io.setVoltage(HoodConstants.ZERO_VOLTAGE);
+
+    if (inputs.supplyCurrentAmps > HoodConstants.ZERO_CURRENT_THRESHOLD_AMPS) {
+      zeroStallTimer.start();
+    } else {
+      zeroStallTimer.reset();
+      zeroStallTimer.stop();
     }
 
-    if (DriverStation.isDisabled()) {
-      setpoint = new State(getMeasuredAngleRad(), 0.0);
+    if (zeroStallTimer.hasElapsed(HoodConstants.ZERO_STALL_TIME_SECS)) {
+      io.zeroSensor(); // sets sensor = ZERO_ANGLE (-27°)
+      io.setVoltage(0.0);
+      zeroed = true;
+      goal = Goal.ZEROED;
+      setpoint = HoodConstants.MIN_ANGLE;
+      zeroStallTimer.stop();
+      zeroStallTimer.reset();
     }
-
-    // Visualize turret in 3D
-    DevBotMech3d.getMeasured().setHoodAngle(new Rotation2d(getMeasuredAngleRad()));
-
-    // Record cycle time
-    LoggedTracer.record("Hood");
   }
 
-  @Override
-  public void periodicAfterScheduler() {
-    if (DriverStation.isEnabled()) {
+  // ── Public API ───────────────────────────────────────────────────────────
 
-      switch (controlMode) {
-        case PROFILED -> {
-          var goalState =
-              new State(
-                  MathUtil.clamp(goalAngle, minAngle, maxAngle),
-                  MathUtil.clamp(goalVelocity, 0.0, maxVelocityRadPerSec.get()));
-
-          double previousVelocity = setpoint.velocity;
-          setpoint = profile.calculate(Constants.loopPeriodSecs, setpoint, goalState);
-
-          if (setpoint.position < minAngle || setpoint.position > maxAngle) {
-            setpoint =
-                new State(
-                    MathUtil.clamp(setpoint.position, minAngle, maxAngle),
-                    MathUtil.clamp(setpoint.velocity, 0.0, maxVelocityRadPerSec.get()));
-          }
-
-          atGoal =
-              EqualsUtil.epsilonEquals(setpoint.position, goalState.position)
-                  && EqualsUtil.epsilonEquals(setpoint.velocity, goalState.velocity);
-
-          double accel = (setpoint.velocity - previousVelocity) / Constants.loopPeriodSecs;
-
-          outputs.positionRad = setpoint.position - hoodOffset;
-          outputs.velocityRadsPerSec = setpoint.velocity;
-
-          outputs.feedforward =
-              kS.get() * Math.signum(setpoint.velocity)
-                  + kG.get() * Math.cos(setpoint.position)
-                  + kA.get() * accel;
-
-          outputs.mode = HoodIOOutputMode.CLOSED_LOOP;
-
-          Logger.recordOutput("Hood/Profile/SetpointPositionRad", setpoint.position);
-          Logger.recordOutput("Hood/Profile/SetpointVelocityRadPerSec", setpoint.velocity);
-          Logger.recordOutput("Hood/Profile/GoalPositionRad", goalState.position);
-          Logger.recordOutput("Hood/Profile/GoalVelocityRadPerSec", goalState.velocity);
-        }
-
-        case DIRECT -> {
-          double clamped = MathUtil.clamp(goalAngle, minAngle, maxAngle);
-
-          outputs.positionRad = clamped - hoodOffset;
-          outputs.velocityRadsPerSec = 0.0;
-
-          outputs.feedforward = kG.get() * Math.cos(clamped);
-
-          outputs.mode = HoodIOOutputMode.CLOSED_LOOP;
-
-          atGoal = Math.abs(getMeasuredAngleRad() - clamped) < 0.01;
-        }
-
-        case OPEN_LOOP -> {
-          outputs.mode = HoodIOOutputMode.OPEN_LOOP;
-        }
-      }
-    }
-
-    io.applyOutputs(outputs);
+  @AutoLogOutput
+  public boolean atGoal() {
+    return Math.abs(inputs.position.minus(setpoint).getDegrees())
+        < HoodConstants.AT_GOAL_TOLERANCE.getDegrees();
   }
 
-  private void setGoalParams(double angle, double velocity) {
-    goalAngle = angle;
-    goalVelocity = velocity;
+  public boolean isZeroed() {
+    return zeroed;
   }
 
-  @AutoLogOutput(key = "Hood/MeasuredAngleRads")
-  public double getMeasuredAngleRad() {
-    return inputs.positionRads + hoodOffset;
+  public void setCoastOverride(BooleanSupplier coast) {
+    this.coastOverride = coast;
   }
 
-  private void zero() {
-    hoodOffset = minAngle - inputs.positionRads;
-    hoodZeroed = true;
+  // ── Test command API (called by ShooterTestCommands) ─────────────────────
+
+  /**
+   * Bypass the goal state machine entirely for open-loop testing. Only use with startEnd() so
+   * voltage is reset to 0 on release.
+   */
+  public void setTestVoltage(double volts) {
+    goal = Goal.OPEN_LOOP_TEST;
+    testVoltage = volts;
   }
 
-  public Command testVoltageCommand(DoubleSupplier volts) {
-    return run(
-        () -> {
-          outputs.mode = HoodIOOutputMode.OPEN_LOOP;
-          outputs.appliedVoltage = MathUtil.clamp(volts.getAsDouble(), -8.0, 8.0);
-        });
+  /** Set a fixed setpoint directly. Used by test and auto commands. */
+  public void setFixedSetpoint(Rotation2d angle) {
+    goal = Goal.FIXED;
+    setpoint = angle;
   }
 
-  public Command runTrackTargetCommand() {
-    return run(
-        () -> {
-          var params = ShotCalculator.getInstance().getParameters();
-          setGoalParams(params.hoodAngle(), params.hoodVelocity());
-        });
+  /**
+   * Increment or decrement the current setpoint by delta. Clamps to MIN/MAX_ANGLE automatically.
+   */
+  public void nudgeSetpoint(Rotation2d delta) {
+    goal = Goal.FIXED;
+    double newDeg = setpoint.getDegrees() + delta.getDegrees();
+    newDeg =
+        Math.max(
+            HoodConstants.MIN_ANGLE.getDegrees(),
+            Math.min(HoodConstants.MAX_ANGLE.getDegrees(), newDeg));
+    setpoint = Rotation2d.fromDegrees(newDeg);
   }
 
-  public Command runProfiledCommand(DoubleSupplier angle, DoubleSupplier velocity) {
-    return run(
-        () -> {
-          controlMode = ControlMode.PROFILED;
-          setGoalParams(angle.getAsDouble(), velocity.getAsDouble());
-        });
+  /** Stop all motor output and return to idle. */
+  public void setGoalIdle() {
+    goal = Goal.IDLE;
   }
 
-  public Command runDirectAngleCommand(DoubleSupplier angle) {
-    return run(
-        () -> {
-          controlMode = ControlMode.DIRECT;
-          goalAngle = angle.getAsDouble();
-        });
+  /** Current position in degrees for console reporting. */
+  public double getPositionDeg() {
+    return inputs.position.getDegrees();
   }
 
-  public Command jogCommand(DoubleSupplier input) {
-    return run(
-        () -> {
-          controlMode = ControlMode.DIRECT;
+  // ── Commands ──────────────────────────────────────────────────────────────
 
-          double speed = 0.02;
-          goalAngle += input.getAsDouble() * speed;
-
-          goalAngle = MathUtil.clamp(goalAngle, minAngle, maxAngle);
-        });
-  }
-
-  public Command runCharacterizationCommand() {
-    return run(
-        () -> {
-          controlMode = ControlMode.OPEN_LOOP; // prevent profile interference
-          outputs.mode = HoodIOOutputMode.CHARACTERIZATION;
-        });
-  }
-
+  /**
+   * Run the zeroing sequence. Must complete before position commands work. Drives into the lower
+   * hard stop, sets sensor, then holds MIN_ANGLE.
+   */
   public Command zeroCommand() {
-    return run(() -> {
-          outputs.mode = HoodIOOutputMode.OPEN_LOOP;
-          hoodZeroed = false;
-        })
-        .andThen(this::zero);
+    return Commands.sequence(
+            Commands.runOnce(
+                () -> {
+                  goal = Goal.ZEROING;
+                  zeroStallTimer.reset();
+                  zeroStallTimer.stop();
+                },
+                this),
+            Commands.waitUntil(() -> goal == Goal.ZEROED),
+            Commands.runOnce(() -> setpoint = HoodConstants.MIN_ANGLE))
+        .withName("Hood Zero");
+  }
+
+  public Command skipZeroCommand() {
+    return Commands.runOnce(
+            () -> {
+              hoodZeroed = true;
+              goal = Goal.ZEROED;
+              hoodOffsetRads = 0.0;
+
+              // Start lastGoalAngleRads at current LaunchCalculator angle
+              lastGoalAngleRads =
+                  LaunchCalculator.getInstance().getParameters().turretAngle().getRadians();
+            },
+            this)
+        .withName("Hood Skip Zero");
+  }
+
+  /** Go to a fixed angle and hold it while the command is running. */
+  public Command runFixedCommand(Supplier<Rotation2d> angleSupplier) {
+    return Commands.run(
+            () -> {
+              goal = Goal.FIXED;
+              setpoint = angleSupplier.get();
+            },
+            this)
+        .withName("Hood Fixed");
+  }
+
+  /** Continuously track the LaunchCalculator's hood angle. */
+  public Command runTrackTargetCommand() {
+    return Commands.run(
+            () -> {
+              goal = Goal.TRACK_TARGET;
+              setpoint = new Rotation2d(LaunchCalculator.getInstance().getParameters().hoodAngle());
+            },
+            this)
+        .withName("Hood Track Target");
+  }
+
+  /** Open-loop voltage sweep for SysId characterization. */
+  public Command runCharacterizationCommand() {
+    return Commands.sequence(
+            Commands.runOnce(() -> goal = Goal.IDLE, this),
+            Commands.run(() -> io.setVoltage(2.0), this))
+        .withName("Hood Characterization");
   }
 }

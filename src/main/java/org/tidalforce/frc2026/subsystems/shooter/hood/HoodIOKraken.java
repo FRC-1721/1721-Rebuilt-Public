@@ -25,107 +25,204 @@
 
 package org.tidalforce.frc2026.subsystems.shooter.hood;
 
+import static org.tidalforce.frc2026.util.PhoenixUtil.*;
+
+import com.ctre.phoenix6.BaseStatusSignal;
+import com.ctre.phoenix6.StatusSignal;
+import com.ctre.phoenix6.configs.MotionMagicConfigs;
+import com.ctre.phoenix6.configs.Slot0Configs;
+import com.ctre.phoenix6.configs.TalonFXConfiguration;
+import com.ctre.phoenix6.controls.MotionMagicVoltage;
 import com.ctre.phoenix6.controls.VoltageOut;
 import com.ctre.phoenix6.hardware.TalonFX;
+import com.ctre.phoenix6.signals.InvertedValue;
 import com.ctre.phoenix6.signals.NeutralModeValue;
-import edu.wpi.first.math.MathUtil;
-import edu.wpi.first.wpilibj.DriverStation;
+import edu.wpi.first.math.filter.Debouncer;
+import edu.wpi.first.math.geometry.Rotation2d;
+import edu.wpi.first.math.util.Units;
+import edu.wpi.first.units.measure.Angle;
+import edu.wpi.first.units.measure.AngularVelocity;
+import edu.wpi.first.units.measure.Current;
+import edu.wpi.first.units.measure.Temperature;
+import edu.wpi.first.units.measure.Voltage;
 
 public class HoodIOKraken implements HoodIO {
+
   private final TalonFX motor;
 
-  private static final double GEAR_RATIO = 25.0; // TODO: tune this
+  // Cached configurator for live gain updates without full reconfiguration
+  private final com.ctre.phoenix6.configs.TalonFXConfigurator configurator;
 
-  private double getPositionRad() {
-    return (motor.getPosition().getValueAsDouble() / GEAR_RATIO) * 2.0 * Math.PI;
-  }
+  // Status signals
+  private final StatusSignal<Angle> position;
+  private final StatusSignal<AngularVelocity> velocity;
+  private final StatusSignal<Voltage> appliedVolts;
+  private final StatusSignal<Current> supplyCurrent;
+  private final StatusSignal<Current> torqueCurrent;
+  private final StatusSignal<Temperature> temp;
 
-  private double getVelocityRadPerSec() {
-    return (motor.getVelocity().getValueAsDouble() / GEAR_RATIO) * 2.0 * Math.PI;
-  }
+  // Fault signals
+  private final StatusSignal<Boolean> faultHardware;
+  private final StatusSignal<Boolean> faultBootDuringEnable;
+  private final StatusSignal<Boolean> faultUnderVoltage;
+  private final StatusSignal<Boolean> faultStatorCurrLimit;
+  private final StatusSignal<Integer> stickyFaultField;
 
-  private double appliedVolts = 0.0;
+  // Control requests — FOC disabled, no Pro license required
+  private final VoltageOut voltageRequest = new VoltageOut(0).withEnableFOC(false);
+  private final MotionMagicVoltage positionRequest = new MotionMagicVoltage(0).withEnableFOC(false);
 
-  public HoodIOKraken(int motorId, String canBus) {
-    motor = new TalonFX(motorId, canBus);
+  private final Debouncer connectedDebounce = new Debouncer(0.5);
 
-    motor.setNeutralMode(NeutralModeValue.Brake);
+  private NeutralModeValue lastNeutralMode = null;
+
+  public HoodIOKraken(int id, String canBus) {
+    motor = new TalonFX(id, canBus);
+    configurator = motor.getConfigurator();
 
     motor.optimizeBusUtilization();
+
+    var cfg = new TalonFXConfiguration();
+
+    // ── Current limits ────────────────────────────────────────────────────
+    cfg.CurrentLimits.StatorCurrentLimit = 40.0;
+    cfg.CurrentLimits.StatorCurrentLimitEnable = true;
+    cfg.CurrentLimits.SupplyCurrentLimit = 30.0;
+    cfg.CurrentLimits.SupplyCurrentLimitEnable = true;
+
+    // ── Feedback — integrated encoder only, no remote sensor ─────────────
+    // Do NOT set FeedbackSensorSource or FeedbackRemoteSensorID.
+    // Phoenix defaults to integrated encoder when these are absent.
+    cfg.Feedback.SensorToMechanismRatio = HoodConstants.GEAR_RATIO;
+
+    // ── Motor direction ───────────────────────────────────────────────────
+    // If open-loop +voltage moves hood in the wrong direction, flip this to
+    // InvertedValue.Clockwise_Positive and redeploy.
+    cfg.MotorOutput.Inverted = InvertedValue.CounterClockwise_Positive;
+    cfg.MotorOutput.NeutralMode = NeutralModeValue.Brake;
+
+    // ── Voltage clamp — conservative during initial testing ───────────────
+    // RAISE PeakForwardVoltage toward 12.0 when ready for full speed.
+    // Keep at 6.0 until zeroing and position control are confirmed working.
+    cfg.Voltage.PeakForwardVoltage = 6.0;
+    cfg.Voltage.PeakReverseVoltage = -6.0;
+
+    // ── Soft limits — from physical measurements ──────────────────────────
+    // MAX_ANGLE = -8°  (near upper hard stop of -5°)
+    // MIN_ANGLE = -27° (near lower hard stop of -30°)
+    // Forward  = increasing sensor value = toward -8°  (upper, less negative)
+    // Reverse  = decreasing sensor value = toward -27° (lower, more negative)
+    cfg.SoftwareLimitSwitch.ForwardSoftLimitEnable = true;
+    cfg.SoftwareLimitSwitch.ForwardSoftLimitThreshold = HoodConstants.MAX_ANGLE.getRotations();
+    cfg.SoftwareLimitSwitch.ReverseSoftLimitEnable = true;
+    cfg.SoftwareLimitSwitch.ReverseSoftLimitThreshold = HoodConstants.MIN_ANGLE.getRotations();
+
+    // ── NO PID GAINS SET HERE ─────────────────────────────────────────────
+    // Gains are pushed by Hood.java on the first periodic() call via
+    // reconfigureGains() and reconfigureProfile(). This ensures
+    // LoggedTunableNumber values in NetworkTables are always what the
+    // motor actually runs with — never stale constructor values.
+
+    tryUntilOk(5, () -> configurator.apply(cfg, 0.25));
+
+    // ── Status signals ────────────────────────────────────────────────────
+    position = motor.getPosition();
+    velocity = motor.getVelocity();
+    appliedVolts = motor.getMotorVoltage();
+    supplyCurrent = motor.getSupplyCurrent();
+    torqueCurrent = motor.getTorqueCurrent();
+    temp = motor.getDeviceTemp();
+
+    // Fault signals at lower frequency — only need these for diagnostics
+    faultHardware = motor.getFault_Hardware();
+    faultBootDuringEnable = motor.getFault_BootDuringEnable();
+    faultUnderVoltage = motor.getFault_Undervoltage();
+    faultStatorCurrLimit = motor.getFault_StatorCurrLimit();
+    stickyFaultField = motor.getStickyFaultField();
+
+    BaseStatusSignal.setUpdateFrequencyForAll(
+        50.0, position, velocity, appliedVolts, supplyCurrent, torqueCurrent, temp);
+    BaseStatusSignal.setUpdateFrequencyForAll(
+        10.0,
+        faultHardware,
+        faultBootDuringEnable,
+        faultUnderVoltage,
+        faultStatorCurrLimit,
+        stickyFaultField);
   }
 
   @Override
   public void updateInputs(HoodIOInputs inputs) {
-    inputs.connected = motor.isAlive();
+    var status =
+        BaseStatusSignal.refreshAll(
+            position, velocity, appliedVolts, supplyCurrent, torqueCurrent, temp);
+    BaseStatusSignal.refreshAll(
+        faultHardware,
+        faultBootDuringEnable,
+        faultUnderVoltage,
+        faultStatorCurrLimit,
+        stickyFaultField);
 
-    inputs.positionRads = getPositionRad();
-    inputs.velocityRadsPerSec = getVelocityRadPerSec();
+    inputs.connected = connectedDebounce.calculate(status.isOK());
+    inputs.position = Rotation2d.fromRotations(position.getValueAsDouble());
+    inputs.velocityRadPerSec = Units.rotationsToRadians(velocity.getValueAsDouble());
+    inputs.appliedVolts = appliedVolts.getValueAsDouble();
+    inputs.supplyCurrentAmps = supplyCurrent.getValueAsDouble();
+    inputs.torqueCurrentAmps = torqueCurrent.getValueAsDouble();
+    inputs.tempCelsius = temp.getValueAsDouble();
 
-    inputs.appliedVoltage = appliedVolts;
-    inputs.supplyCurrentAmps = motor.getSupplyCurrent().getValueAsDouble();
-    inputs.torqueCurrentAmps = motor.getTorqueCurrent().getValueAsDouble();
-    inputs.tempCelsius = motor.getDeviceTemp().getValueAsDouble();
+    inputs.faultHardware = faultHardware.getValue();
+    inputs.faultBootDuringEnable = faultBootDuringEnable.getValue();
+    inputs.faultUnderVoltage = faultUnderVoltage.getValue();
+    inputs.faultStatorCurrLimit = faultStatorCurrLimit.getValue();
+    inputs.stickyFaultAny = stickyFaultField.getValueAsDouble() != 0;
   }
 
   @Override
-  public void applyOutputs(HoodIOOutputs outputs) {
+  public void setVoltage(double volts) {
+    motor.setControl(voltageRequest.withOutput(volts));
+  }
 
-    if (DriverStation.isDisabled()) {
-      appliedVolts = 0.0;
-      motor.setControl(new VoltageOut(0.0));
-      return;
+  @Override
+  public void setPosition(double mechanismRotations) {
+    motor.setControl(positionRequest.withPosition(mechanismRotations));
+  }
+
+  @Override
+  public void zeroSensor() {
+    // Sets the current position as ZERO_ANGLE (lower hard stop with margin).
+    motor.setPosition(HoodConstants.ZERO_ANGLE.getRotations());
+  }
+
+  @Override
+  public void setBrakeMode(boolean brake) {
+    var mode = brake ? NeutralModeValue.Brake : NeutralModeValue.Coast;
+    if (mode != lastNeutralMode) {
+      motor.setNeutralMode(mode);
+      lastNeutralMode = mode;
     }
+  }
 
-    final double DIRECTION = -1.0;
+  @Override
+  public void reconfigureGains(double kP, double kD, double kS, double kG, double kV, double kA) {
+    var slot = new Slot0Configs();
+    slot.kP = kP;
+    slot.kI = 0.0;
+    slot.kD = kD;
+    slot.kS = kS;
+    slot.kG = kG;
+    slot.kV = kV;
+    slot.kA = kA;
+    configurator.apply(slot);
+  }
 
-    switch (outputs.mode) {
-      case OPEN_LOOP:
-        appliedVolts = DIRECTION * outputs.appliedVoltage;
-        break;
-
-      case CLOSED_LOOP:
-        {
-          double position = getPositionRad();
-          double velocity = getVelocityRadPerSec();
-
-          double error = outputs.positionRad - position;
-
-          double pid = outputs.kP * error - outputs.kD * velocity;
-
-          appliedVolts = pid + outputs.feedforward;
-
-          appliedVolts *= DIRECTION;
-          break;
-        }
-
-      case CHARACTERIZATION:
-        {
-          double step = 0.02;
-          appliedVolts += step;
-          appliedVolts = MathUtil.clamp(appliedVolts, -2.0, 2.0);
-
-          if (Math.abs(getVelocityRadPerSec()) > 0.01) {
-            System.out.println("KS FOUND: " + appliedVolts);
-          }
-          break;
-        }
-
-      case BRAKE:
-      case COAST:
-      default:
-        appliedVolts = 0.0;
-        break;
-    }
-
-    // Safety clamp
-    appliedVolts = MathUtil.clamp(appliedVolts, -2.0, 2.0);
-
-    // Smooth ramp
-    double rampRate = 0.05;
-    double delta = appliedVolts - this.appliedVolts;
-    delta = MathUtil.clamp(delta, -rampRate, rampRate);
-    this.appliedVolts += delta;
-
-    motor.setControl(new VoltageOut(this.appliedVolts));
+  @Override
+  public void reconfigureProfile(
+      double cruiseVelocityRPS, double accelerationRPS2, double jerkRPS3) {
+    var mm = new MotionMagicConfigs();
+    mm.MotionMagicCruiseVelocity = cruiseVelocityRPS;
+    mm.MotionMagicAcceleration = accelerationRPS2;
+    mm.MotionMagicJerk = jerkRPS3;
+    configurator.apply(mm);
   }
 }

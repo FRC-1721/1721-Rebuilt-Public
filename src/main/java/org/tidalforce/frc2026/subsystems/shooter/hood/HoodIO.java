@@ -25,43 +25,53 @@
 
 package org.tidalforce.frc2026.subsystems.shooter.hood;
 
+import edu.wpi.first.math.geometry.Rotation2d;
 import org.littletonrobotics.junction.AutoLog;
 
 public interface HoodIO {
 
   @AutoLog
-  public static class HoodIOInputs {
-    // TODO: add encoder
-    boolean connected = false;
-    double positionRads = 0.0;
-    double velocityRadsPerSec = 0.0;
-    double appliedVoltage = 0.0;
-    double supplyCurrentAmps = 0.0;
-    double torqueCurrentAmps = 0.0;
-    double tempCelsius = 0.0;
+  class HoodIOInputs {
+    public boolean connected = false;
+    public Rotation2d position = Rotation2d.kZero;
+    public double velocityRadPerSec = 0.0;
+    public double appliedVolts = 0.0;
+    public double supplyCurrentAmps = 0.0;
+    public double torqueCurrentAmps = 0.0;
+    public double tempCelsius = 0.0;
+
+    // Fault flags — visible in AdvantageScope and Elastic alerts
+    public boolean faultHardware = false;
+    public boolean faultBootDuringEnable = false;
+    public boolean faultUnderVoltage = false;
+    public boolean faultStatorCurrLimit = false;
+    public boolean stickyFaultAny = false;
   }
 
-  public static enum HoodIOOutputMode {
-    BRAKE,
-    COAST,
-    CLOSED_LOOP,
-    OPEN_LOOP,
-    CHARACTERIZATION
-  }
+  default void updateInputs(HoodIOInputs inputs) {}
 
-  public static class HoodIOOutputs {
+  /** Run open-loop voltage. Used for zeroing, open-loop testing, and SysId. */
+  default void setVoltage(double volts) {}
 
-    public HoodIOOutputMode mode = HoodIOOutputMode.BRAKE;
-    // Closed loop control
-    public double positionRad = 0.0;
-    public double appliedVoltage = 0.0;
-    public double velocityRadsPerSec = 0.0;
-    public double feedforward = 0.0;
-    public double kP = 0.0;
-    public double kD = 0.0;
-  }
+  /** Run closed-loop MotionMagic to a position in mechanism rotations. */
+  default void setPosition(double mechanismRotations) {}
 
-  public default void updateInputs(HoodIOInputs inputs) {}
+  /** Set the motor's internal sensor to the known physical position after zeroing. */
+  default void zeroSensor() {}
 
-  public default void applyOutputs(HoodIOOutputs outputs) {}
+  /** Switch between brake and coast mode. */
+  default void setBrakeMode(boolean brake) {}
+
+  /**
+   * Push updated PID gains to the motor. Called by Hood.java whenever a LoggedTunableNumber
+   * changes.
+   */
+  default void reconfigureGains(double kP, double kD, double kS, double kG, double kV, double kA) {}
+
+  /**
+   * Push updated MotionMagic profile to the motor. Called by Hood.java whenever a
+   * LoggedTunableNumber changes.
+   */
+  default void reconfigureProfile(
+      double cruiseVelocityRPS, double accelerationRPS2, double jerkRPS3) {}
 }

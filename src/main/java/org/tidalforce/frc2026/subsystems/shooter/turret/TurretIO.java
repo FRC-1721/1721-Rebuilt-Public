@@ -25,40 +25,53 @@
 
 package org.tidalforce.frc2026.subsystems.shooter.turret;
 
+import edu.wpi.first.math.geometry.Rotation2d;
 import org.littletonrobotics.junction.AutoLog;
 
 public interface TurretIO {
 
   @AutoLog
-  public static class TurretIOInputs {
-    boolean motorConnected = false;
-    double positionRads = 0.0;
-    double velocityRadsPerSec = 0.0;
-    double appliedVolts = 0.0;
-    double supplyCurrentAmps = 0.0;
-    double torqueCurrentAmps = 0.0;
+  class TurretIOInputs {
+    public boolean connected = false;
+    public Rotation2d position = Rotation2d.kZero;
+    public double velocityRadPerSec = 0.0;
+    public double appliedVolts = 0.0;
+    public double supplyCurrentAmps = 0.0;
+    public double torqueCurrentAmps = 0.0;
+    public double tempCelsius = 0.0;
+
+    // Fault flags — visible in AdvantageScope and Elastic alerts
+    public boolean faultHardware = false;
+    public boolean faultBootDuringEnable = false;
+    public boolean faultUnderVoltage = false;
+    public boolean faultStatorCurrLimit = false;
+    public boolean stickyFaultAny = false;
   }
 
-  public static enum TurretIOOutputMode {
-    BRAKE,
-    COAST,
-    CLOSED_LOOP,
-    OPEN_LOOP
-  }
+  default void updateInputs(TurretIOInputs inputs) {}
 
-  public static class TurretIOOutputs {
-    public TurretIOOutputMode mode = TurretIOOutputMode.BRAKE;
+  /** Run open-loop voltage. Used for zeroing, open-loop testing, and SysId. */
+  default void setVoltage(double volts) {}
 
-    public double position = 0.0;
-    public double velocity = 0.0;
-    public double kP = 0.0;
-    public double kD = 0.0;
+  /** Run closed-loop MotionMagic to a position in mechanism rotations. */
+  default void setPosition(double mechanismRotations) {}
 
-    // SYSID voltage control
-    public double voltage = 0.0;
-  }
+  /** Set the motor's sensor to the known position after zeroing. */
+  default void zeroSensor(double knownPositionRotations) {}
 
-  public default void updateInputs(TurretIOInputs inputs) {}
+  /** Switch between brake and coast mode. */
+  default void setBrakeMode(boolean brake) {}
 
-  public default void applyOutputs(TurretIOOutputs outputs) {}
+  /**
+   * Push updated PID gains to the motor. Called by Turret.java whenever a LoggedTunableNumber
+   * changes.
+   */
+  default void reconfigureGains(double kP, double kD, double kS, double kV, double kA) {}
+
+  /**
+   * Push updated MotionMagic profile to the motor. Called by Turret.java whenever a
+   * LoggedTunableNumber changes.
+   */
+  default void reconfigureProfile(
+      double cruiseVelocityRPS, double accelerationRPS2, double jerkRPS3) {}
 }
