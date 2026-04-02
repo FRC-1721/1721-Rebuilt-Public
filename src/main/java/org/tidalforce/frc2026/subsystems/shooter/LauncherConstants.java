@@ -25,19 +25,15 @@
 
 package org.tidalforce.frc2026.subsystems.shooter;
 
-// Copyright (c) 2025-2026 Littleton Robotics
-// http://github.com/Mechanical-Advantage
-//
-// Use of this source code is governed by an MIT-style
-// license that can be found in the LICENSE file at
-// the root directory of this project.
-
 import edu.wpi.first.math.geometry.Rotation3d;
 import edu.wpi.first.math.geometry.Transform3d;
+import edu.wpi.first.math.util.Units;
 
 public class LauncherConstants {
-  public static Transform3d robotToLauncher =
-      new Transform3d(-0.276, 0.09, 0.599, new Rotation3d(0.0, 0.0, Math.PI));
+  public static Transform3d robotToTurret =
+      new Transform3d(0.058, -0.022, 0.294, new Rotation3d(0, 0, Units.degreesToRadians(90)));
+  public static Transform3d turretToCamera =
+      new Transform3d(-0.057, 0.18, 0.19, new Rotation3d(0.0, Units.degreesToRadians(-30), 0.0));
 
   private LauncherConstants() {}
 }
