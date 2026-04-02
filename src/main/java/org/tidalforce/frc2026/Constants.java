@@ -28,8 +28,8 @@ package org.tidalforce.frc2026;
 import edu.wpi.first.wpilibj.RobotBase;
 
 public final class Constants {
-  public static final RobotType robot = RobotType.SIM;
-  public static final boolean tuningMode = true;
+  public static final RobotType robot = RobotType.COMP;
+  public static final boolean tuningMode = false;
 
   public static final double loopPeriodSecs = 0.02;
   public static final double loopPeriodWatchdogSecs = 0.2;

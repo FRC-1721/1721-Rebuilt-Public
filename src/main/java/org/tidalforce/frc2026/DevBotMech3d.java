@@ -35,7 +35,7 @@ import lombok.Setter;
 import lombok.experimental.ExtensionMethod;
 import org.littletonrobotics.junction.Logger;
 import org.tidalforce.frc2026.subsystems.intake.IntakeConstants;
-import org.tidalforce.frc2026.subsystems.shooter.ShooterConstants;
+import org.tidalforce.frc2026.subsystems.shooter.LauncherConstants;
 import org.tidalforce.frc2026.util.geometry.GeomUtil;
 
 @ExtensionMethod({GeomUtil.class})
@@ -55,7 +55,7 @@ public class DevBotMech3d {
   /** Log the component poses and camera pose. */
   public void log(String key) {
     var turretPose =
-        ShooterConstants.robotToTurret
+        LauncherConstants.robotToTurret
             .toPose3d()
             .transformBy(
                 new Transform3d(
@@ -70,7 +70,7 @@ public class DevBotMech3d {
     var cameraPose =
         new Pose3d(RobotState.getInstance().getEstimatedPose())
             .transformBy(turretPose.toTransform3d())
-            .transformBy(ShooterConstants.turretToCamera);
+            .transformBy(LauncherConstants.turretToCamera);
     Logger.recordOutput(key + "/CameraPose", cameraPose);
   }
 }
