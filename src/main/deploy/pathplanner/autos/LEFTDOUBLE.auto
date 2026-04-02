@@ -1,0 +1,43 @@
+{
+  "version": "2025.0",
+  "command": {
+    "type": "sequential",
+    "data": {
+      "commands": [
+        {
+          "type": "path",
+          "data": {
+            "pathName": "LeftStart to NZ quick fight"
+          }
+        },
+        {
+          "type": "path",
+          "data": {
+            "pathName": "Get Out Quick"
+          }
+        },
+        {
+          "type": "path",
+          "data": {
+            "pathName": "Double Swipe"
+          }
+        },
+        {
+          "type": "path",
+          "data": {
+            "pathName": "Get Out Quick Double"
+          }
+        },
+        {
+          "type": "path",
+          "data": {
+            "pathName": "Depot"
+          }
+        }
+      ]
+    }
+  },
+  "resetOdom": true,
+  "folder": null,
+  "choreoAuto": false
+}

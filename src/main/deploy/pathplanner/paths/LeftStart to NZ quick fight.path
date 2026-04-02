@@ -3,42 +3,35 @@
   "waypoints": [
     {
       "anchor": {
-        "x": 4.204696428571428,
-        "y": 0.6175535714285718
+        "x": 4.40938577586207,
+        "y": 7.416702586206896
       },
       "prevControl": null,
       "nextControl": {
-        "x": 9.16080357142857,
-        "y": 0.6499464285714283
+        "x": 8.240678879310344,
+        "y": 7.328739224137931
       },
       "isLocked": false,
-      "linkedName": "AZRight1"
+      "linkedName": null
     },
     {
       "anchor": {
-        "x": 8.691107142857142,
-        "y": 3.5167142857142855
+        "x": 7.810635775862069,
+        "y": 4.768028017241379
       },
       "prevControl": {
-        "x": 8.707303571428572,
-        "y": 2.4477499999999996
+        "x": 7.791088362068967,
+        "y": 7.661045258620689
       },
       "nextControl": null,
       "isLocked": false,
-      "linkedName": "NZEnd2"
+      "linkedName": "Quick1"
     }
   ],
   "rotationTargets": [],
   "constraintZones": [],
   "pointTowardsZones": [],
-  "eventMarkers": [
-    {
-      "name": "IntakeIn",
-      "waypointRelativePos": 0.0,
-      "endWaypointRelativePos": null,
-      "command": null
-    }
-  ],
+  "eventMarkers": [],
   "globalConstraints": {
     "maxVelocity": 2.0,
     "maxAcceleration": 2.0,
@@ -49,13 +42,13 @@
   },
   "goalEndState": {
     "velocity": 0,
-    "rotation": 90.0
+    "rotation": -90.0
   },
   "reversed": false,
   "folder": null,
   "idealStartingState": {
     "velocity": 0,
-    "rotation": 0.0
+    "rotation": -90.0
   },
   "useDefaultConstraints": true
 }
